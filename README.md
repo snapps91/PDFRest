@@ -1,4 +1,4 @@
-# pdfrest
+# PDF REST Micro Service
 
 A minimal, production-ready microservice that turns raw HTML into a PDF using a running headless Chromium instance via the DevTools protocol. The service exposes a single REST endpoint at `/api/v1/pdf`, accepts HTML in the request body, and returns a PDF stream as the response.
 
