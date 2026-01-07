@@ -101,6 +101,28 @@ export CHROME_ENDPOINT=http://127.0.0.1:9222
 go run .
 ```
 
+## Benchmarking
+
+A simple bash script is included to run a high-volume request benchmark.
+
+```bash
+./scripts/benchmark.sh
+```
+
+You can override defaults:
+
+```bash
+HOST=http://localhost:8080 TOTAL_REQUESTS=10000 CONCURRENCY=50 ./scripts/benchmark.sh
+```
+
+Defaults:
+
+- `HOST`: `http://127.0.0.1:8080`
+- `ENDPOINT`: `/api/v1/pdf`
+- `TOTAL_REQUESTS`: `5000`
+- `CONCURRENCY`: `20`
+- `OUT_DIR`: `/tmp/pdfrest-bench`
+
 ## Container image (Alpine + supervisord)
 
 The provided `Dockerfile` builds a statically linked binary and runs both Chromium and the API with supervisord.
