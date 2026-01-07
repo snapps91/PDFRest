@@ -65,6 +65,8 @@ curl -sS -X POST "http://localhost:8080/api/v1/pdf?landscape=true&scale=0.9&pape
 ### `GET /healthz`
 
 Basic health check.
+Verify the chromium connection is working and the service is operational.
+Response: `200 OK` with body `ok`.
 
 ```bash
 curl -sS http://localhost:8080/healthz
