@@ -94,7 +94,7 @@ func main() {
 
 	// Router.
 	mux := http.NewServeMux()
-	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver))
+	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver, renderPDF))
 	mux.HandleFunc(pathHealthz, healthHandler)
 
 	// Server with sane defaults. Note: WriteTimeout is set to (request timeout + small buffer),
@@ -169,7 +169,13 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
+type wsResolver interface {
+	wsURL(ctx context.Context) (string, error)
+}
+
+type pdfRenderer func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error)
+
+func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Only POST is allowed.
 		if r.Method != http.MethodPost {
@@ -212,7 +218,7 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 		}
 
 		// Render PDF from HTML.
-		pdf, err := renderPDF(ctx, wsURL, string(body), cfg.PDFWait, options)
+		pdf, err := renderer(ctx, wsURL, string(body), cfg.PDFWait, options)
 		if err != nil {
 			log.Printf("render error: %v", err)
 			http.Error(w, "render failed", http.StatusInternalServerError)
