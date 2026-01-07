@@ -1,3 +1,5 @@
+// Copyright 2026 Giacomo Failla <failla.giacomo@gmail.com>
+
 package main
 
 import (
