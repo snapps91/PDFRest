@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
@@ -95,7 +96,7 @@ func main() {
 	// Router.
 	mux := http.NewServeMux()
 	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver, renderPDF))
-	mux.HandleFunc(pathHealthz, healthHandler)
+	mux.HandleFunc(pathHealthz, healthHandler(resolver))
 
 	// Server with sane defaults. Note: WriteTimeout is set to (request timeout + small buffer),
 	// so handlers can use the full configured RequestTimeout.
@@ -163,10 +164,27 @@ func loadConfig() config {
 	}
 }
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	// Health endpoints should be fast and side-effect free.
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+func healthHandler(resolver wsResolver) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Health endpoints should be fast and side-effect free.
+		ctx, cancel := context.WithTimeout(r.Context(), defaultChromeClientTimeout)
+		defer cancel()
+
+		if checker, ok := resolver.(interface {
+			checkChrome(ctx context.Context) error
+		}); ok {
+			if err := checker.checkChrome(ctx); err != nil {
+				http.Error(w, "chrome unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		} else if _, err := resolver.wsURL(ctx); err != nil {
+			http.Error(w, "chrome unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}
 }
 
 type wsResolver interface {
@@ -189,7 +207,11 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 
 		// Enforce maximum body size to protect memory.
 		r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxBodyBytes)
-		defer r.Body.Close()
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Printf("request body close error: %v", err)
+			}
+		}()
 
 		body, err := readRequestBody(r.Body)
 		if err != nil {
@@ -248,19 +270,16 @@ func readRequestBody(r io.Reader) ([]byte, error) {
 // mapBodyReadErrorToStatus keeps the current status mapping logic intact,
 // but isolates it into a dedicated function for clarity and testability.
 func mapBodyReadErrorToStatus(err error) int {
-	status := http.StatusBadRequest
-
 	var maxErr *http.MaxBytesError
 	switch {
 	case errors.Is(err, http.ErrBodyReadAfterClose), errors.Is(err, io.EOF):
-		status = http.StatusBadRequest
+		return http.StatusBadRequest
 	case errors.As(err, &maxErr):
-		status = http.StatusRequestEntityTooLarge
+		return http.StatusRequestEntityTooLarge
 	default:
 		// Preserve behavior: "invalid request body" + 400 for generic errors.
-		status = http.StatusBadRequest
+		return http.StatusBadRequest
 	}
-	return status
 }
 
 // renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
@@ -367,7 +386,11 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("chrome version body close error: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected chrome status: %s", resp.Status)
@@ -385,6 +408,53 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 	c.setCachedWS(payload.WebSocketDebuggerURL)
 
 	return payload.WebSocketDebuggerURL, nil
+}
+
+// checkChrome verifies connectivity to Chrome without relying on cached websocket values.
+func (c *chromeResolver) checkChrome(ctx context.Context) error {
+	if c.ws != "" {
+		allocCtx, cancel := chromedp.NewRemoteAllocator(ctx, c.ws)
+		defer cancel()
+
+		ctx, cancel = chromedp.NewContext(allocCtx)
+		defer cancel()
+
+		return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+			_, _, _, _, _, err := browser.GetVersion().Do(ctx)
+			return err
+		}))
+	}
+
+	endpoint := fmt.Sprintf("%s/json/version", c.endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("chrome health body close error: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected chrome status: %s", resp.Status)
+	}
+
+	var payload versionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return err
+	}
+	if payload.WebSocketDebuggerURL == "" {
+		return errors.New("missing websocket debugger url")
+	}
+
+	c.setCachedWS(payload.WebSocketDebuggerURL)
+	return nil
 }
 
 // getCachedWS returns the cached websocket URL if still valid.
