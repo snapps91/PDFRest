@@ -26,6 +26,17 @@ This service is designed for fast, reliable HTML-to-PDF rendering with minimal o
 
 - **Request body**: raw HTML (`text/html`) or any content type; the body is treated as HTML.
 - **Response**: `application/pdf` with an inline `Content-Disposition` header.
+- **Query parameters (optional)**:
+  - `landscape` (bool)
+  - `scale` (float)
+  - `paper_width` (float, inches)
+  - `paper_height` (float, inches)
+  - `margin_top` (float, inches)
+  - `margin_bottom` (float, inches)
+  - `margin_left` (float, inches)
+  - `margin_right` (float, inches)
+  - `print_background` (bool)
+  - `page_ranges` (string, e.g. `1-3,5`)
 
 Example:
 
@@ -40,6 +51,15 @@ curl -sS -X POST http://localhost:8080/api/v1/pdf \
   <body><h1>Hello PDF</h1><p>Rendered by Chromium.</p></body>
 </html>
 HTML
+```
+
+Example with PDF options:
+
+```bash
+curl -sS -X POST "http://localhost:8080/api/v1/pdf?landscape=true&scale=0.9&paper_width=8.27&paper_height=11.69&margin_top=0.4&margin_bottom=0.4&margin_left=0.4&margin_right=0.4&print_background=true&page_ranges=1-2" \
+  -H 'Content-Type: text/html; charset=utf-8' \
+  --data-binary '<!doctype html><html><body><h1>PDF Options</h1></body></html>' \
+  -o /tmp/options.pdf
 ```
 
 ### `GET /healthz`

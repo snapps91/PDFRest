@@ -54,6 +54,19 @@ type config struct {
 	PDFWait        time.Duration
 }
 
+type pdfOptions struct {
+	Landscape       *bool
+	Scale           *float64
+	PaperWidth      *float64
+	PaperHeight     *float64
+	MarginTop       *float64
+	MarginBottom    *float64
+	MarginLeft      *float64
+	MarginRight     *float64
+	PrintBackground *bool
+	PageRanges      string
+}
+
 // chromeResolver resolves the remote Chrome DevTools websocket URL.
 // It supports:
 // - Explicit websocket URL via env (CHROME_WS)
@@ -184,6 +197,12 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 			return
 		}
 
+		options, err := parsePDFOptions(r.URL.Query())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		// Resolve Chrome websocket endpoint.
 		wsURL, err := resolver.wsURL(ctx)
 		if err != nil {
@@ -193,7 +212,7 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 		}
 
 		// Render PDF from HTML.
-		pdf, err := renderPDF(ctx, wsURL, string(body), cfg.PDFWait)
+		pdf, err := renderPDF(ctx, wsURL, string(body), cfg.PDFWait, options)
 		if err != nil {
 			log.Printf("render error: %v", err)
 			http.Error(w, "render failed", http.StatusInternalServerError)
@@ -240,7 +259,7 @@ func mapBodyReadErrorToStatus(err error) int {
 
 // renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
 // Logic is unchanged: navigate to about:blank -> set document content -> wait for body -> optional sleep -> PrintToPDF.
-func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration) ([]byte, error) {
+func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
 	allocCtx, cancel := chromedp.NewRemoteAllocator(ctx, wsURL)
 	defer cancel()
 
@@ -275,7 +294,38 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration) ([]b
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			// Print with background enabled, matching original behavior.
 			var err error
-			pdf, _, err = page.PrintToPDF().WithPrintBackground(true).Do(ctx)
+			print := page.PrintToPDF().WithPrintBackground(true)
+			if options.PrintBackground != nil {
+				print = print.WithPrintBackground(*options.PrintBackground)
+			}
+			if options.Landscape != nil {
+				print = print.WithLandscape(*options.Landscape)
+			}
+			if options.Scale != nil {
+				print = print.WithScale(*options.Scale)
+			}
+			if options.PaperWidth != nil {
+				print = print.WithPaperWidth(*options.PaperWidth)
+			}
+			if options.PaperHeight != nil {
+				print = print.WithPaperHeight(*options.PaperHeight)
+			}
+			if options.MarginTop != nil {
+				print = print.WithMarginTop(*options.MarginTop)
+			}
+			if options.MarginBottom != nil {
+				print = print.WithMarginBottom(*options.MarginBottom)
+			}
+			if options.MarginLeft != nil {
+				print = print.WithMarginLeft(*options.MarginLeft)
+			}
+			if options.MarginRight != nil {
+				print = print.WithMarginRight(*options.MarginRight)
+			}
+			if options.PageRanges != "" {
+				print = print.WithPageRanges(options.PageRanges)
+			}
+			pdf, _, err = print.Do(ctx)
 			return err
 		}),
 	)
@@ -407,4 +457,94 @@ func getEnvInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	return parsed
+}
+
+func parsePDFOptions(values map[string][]string) (pdfOptions, error) {
+	options := pdfOptions{}
+
+	if value := getQueryValue(values, "landscape"); value != "" {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return options, fmt.Errorf("invalid landscape")
+		}
+		options.Landscape = &parsed
+	}
+
+	if value := getQueryValue(values, "scale"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid scale")
+		}
+		options.Scale = &parsed
+	}
+
+	if value := getQueryValue(values, "paper_width"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid paper_width")
+		}
+		options.PaperWidth = &parsed
+	}
+
+	if value := getQueryValue(values, "paper_height"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid paper_height")
+		}
+		options.PaperHeight = &parsed
+	}
+
+	if value := getQueryValue(values, "margin_top"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid margin_top")
+		}
+		options.MarginTop = &parsed
+	}
+
+	if value := getQueryValue(values, "margin_bottom"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid margin_bottom")
+		}
+		options.MarginBottom = &parsed
+	}
+
+	if value := getQueryValue(values, "margin_left"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid margin_left")
+		}
+		options.MarginLeft = &parsed
+	}
+
+	if value := getQueryValue(values, "margin_right"); value != "" {
+		parsed, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return options, fmt.Errorf("invalid margin_right")
+		}
+		options.MarginRight = &parsed
+	}
+
+	if value := getQueryValue(values, "print_background"); value != "" {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return options, fmt.Errorf("invalid print_background")
+		}
+		options.PrintBackground = &parsed
+	}
+
+	options.PageRanges = getQueryValue(values, "page_ranges")
+
+	return options, nil
+}
+
+func getQueryValue(values map[string][]string, key string) string {
+	if values == nil {
+		return ""
+	}
+	if list, ok := values[key]; ok && len(list) > 0 {
+		return list[0]
+	}
+	return ""
 }
