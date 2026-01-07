@@ -20,6 +20,31 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+const (
+	// API paths.
+	pathPDF     = "/api/v1/pdf"
+	pathHealthz = "/healthz"
+
+	// Default server-level timeouts.
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultReadTimeout       = 15 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
+
+	// Shutdown timeout (graceful).
+	defaultShutdownTimeout = 10 * time.Second
+
+	// Client timeout for the Chrome /json/version endpoint.
+	defaultChromeClientTimeout = 5 * time.Second
+
+	// Cache TTL for Chrome websocket discovery.
+	defaultWSTTL = 1 * time.Minute
+
+	// Response header.
+	pdfFilename = "document.pdf"
+)
+
+// config holds runtime configuration loaded from env vars.
+// Keep it as a "value type": immutable after construction.
 type config struct {
 	Addr           string
 	ChromeEndpoint string
@@ -29,6 +54,10 @@ type config struct {
 	PDFWait        time.Duration
 }
 
+// chromeResolver resolves the remote Chrome DevTools websocket URL.
+// It supports:
+// - Explicit websocket URL via env (CHROME_WS)
+// - Discovery via /json/version on the Chrome endpoint, with caching
 type chromeResolver struct {
 	endpoint string
 	ws       string
@@ -47,50 +76,63 @@ type versionResponse struct {
 func main() {
 	cfg := loadConfig()
 
-	resolver := &chromeResolver{
-		endpoint: cfg.ChromeEndpoint,
-		ws:       cfg.ChromeWS,
-		client: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-		cacheTTL: 1 * time.Minute,
-	}
+	// Resolver: discovers Chrome websocket URL unless explicitly provided.
+	resolver := newChromeResolver(cfg)
 
+	// Router.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/pdf", pdfHandler(cfg, resolver))
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver))
+	mux.HandleFunc(pathHealthz, healthHandler)
 
+	// Server with sane defaults. Note: WriteTimeout is set to (request timeout + small buffer),
+	// so handlers can use the full configured RequestTimeout.
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           loggingMiddleware(mux),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
 		WriteTimeout:      cfg.RequestTimeout + 5*time.Second,
-		IdleTimeout:       60 * time.Second,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 
-	shutdownErr := make(chan error, 1)
+	runServer(srv, cfg.Addr)
+}
+
+func newChromeResolver(cfg config) *chromeResolver {
+	return &chromeResolver{
+		endpoint: cfg.ChromeEndpoint,
+		ws:       cfg.ChromeWS,
+		client: &http.Client{
+			Timeout: defaultChromeClientTimeout,
+		},
+		cacheTTL: defaultWSTTL,
+	}
+}
+
+func runServer(srv *http.Server, addr string) {
+	serverErr := make(chan error, 1)
+
 	go func() {
-		log.Printf("listening on %s", cfg.Addr)
+		log.Printf("listening on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			shutdownErr <- err
+			serverErr <- err
 		}
 	}()
 
+	// Listen for OS signals.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+	// Block until signal or server error.
 	select {
 	case sig := <-stop:
-		log.Printf("shutting down on %s", sig)
-	case err := <-shutdownErr:
+		log.Printf("shutting down on signal: %s", sig)
+	case err := <-serverErr:
 		log.Printf("server error: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Graceful shutdown.
+	ctx, cancel := context.WithTimeout(context.Background(), defaultShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Printf("shutdown error: %v", err)
@@ -108,29 +150,32 @@ func loadConfig() config {
 	}
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Health endpoints should be fast and side-effect free.
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok"))
+}
+
 func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Only POST is allowed.
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 
+		// Per-request timeout. This drives both Chrome discovery and PDF rendering.
 		ctx, cancel := context.WithTimeout(r.Context(), cfg.RequestTimeout)
 		defer cancel()
 
+		// Enforce maximum body size to protect memory.
 		r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxBodyBytes)
 		defer r.Body.Close()
 
-		body, err := io.ReadAll(r.Body)
+		body, err := readRequestBody(r.Body)
 		if err != nil {
-			status := http.StatusBadRequest
-			var maxErr *http.MaxBytesError
-			if errors.Is(err, http.ErrBodyReadAfterClose) || errors.Is(err, io.EOF) {
-				status = http.StatusBadRequest
-			} else if errors.As(err, &maxErr) {
-				status = http.StatusRequestEntityTooLarge
-			}
-			http.Error(w, "invalid request body", status)
+			// Preserve original behavior: map specific read errors to an HTTP status.
+			http.Error(w, "invalid request body", mapBodyReadErrorToStatus(err))
 			return
 		}
 
@@ -139,6 +184,7 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 			return
 		}
 
+		// Resolve Chrome websocket endpoint.
 		wsURL, err := resolver.wsURL(ctx)
 		if err != nil {
 			log.Printf("chrome ws error: %v", err)
@@ -146,6 +192,7 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 			return
 		}
 
+		// Render PDF from HTML.
 		pdf, err := renderPDF(ctx, wsURL, string(body), cfg.PDFWait)
 		if err != nil {
 			log.Printf("render error: %v", err)
@@ -153,26 +200,63 @@ func pdfHandler(cfg config, resolver *chromeResolver) http.HandlerFunc {
 			return
 		}
 
+		// Response headers.
 		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", "inline; filename=\"document.pdf\"")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", pdfFilename))
+
+		// Basic hardening headers (does not affect logic).
+		// These are safe defaults for an API returning binary content.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(pdf)
 	}
 }
 
+// readRequestBody reads the body fully. The MaxBytesReader is already applied at the handler level.
+func readRequestBody(r io.Reader) ([]byte, error) {
+	// Keep the original semantics: ReadAll then validate len.
+	return io.ReadAll(r)
+}
+
+// mapBodyReadErrorToStatus keeps the current status mapping logic intact,
+// but isolates it into a dedicated function for clarity and testability.
+func mapBodyReadErrorToStatus(err error) int {
+	status := http.StatusBadRequest
+
+	var maxErr *http.MaxBytesError
+	switch {
+	case errors.Is(err, http.ErrBodyReadAfterClose), errors.Is(err, io.EOF):
+		status = http.StatusBadRequest
+	case errors.As(err, &maxErr):
+		status = http.StatusRequestEntityTooLarge
+	default:
+		// Preserve behavior: "invalid request body" + 400 for generic errors.
+		status = http.StatusBadRequest
+	}
+	return status
+}
+
+// renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
+// Logic is unchanged: navigate to about:blank -> set document content -> wait for body -> optional sleep -> PrintToPDF.
 func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration) ([]byte, error) {
 	allocCtx, cancel := chromedp.NewRemoteAllocator(ctx, wsURL)
 	defer cancel()
 
+	// Create a new tab context (child of allocator ctx).
 	ctx, cancel = chromedp.NewContext(allocCtx)
 	defer cancel()
 
-	var pdf []byte
-	var frameID cdp.FrameID
+	var (
+		pdf     []byte
+		frameID cdp.FrameID
+	)
 
 	err := chromedp.Run(ctx,
 		chromedp.Navigate("about:blank"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Fetch the main frame and inject the provided HTML.
 			frameTree, err := page.GetFrameTree().Do(ctx)
 			if err != nil {
 				return err
@@ -182,12 +266,14 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration) ([]b
 		}),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Optional wait to allow dynamic content to settle.
 			if wait <= 0 {
 				return nil
 			}
 			return chromedp.Sleep(wait).Do(ctx)
 		}),
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Print with background enabled, matching original behavior.
 			var err error
 			pdf, _, err = page.PrintToPDF().WithPrintBackground(true).Do(ctx)
 			return err
@@ -200,18 +286,21 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration) ([]b
 	return pdf, nil
 }
 
+// wsURL returns the Chrome DevTools websocket URL.
+// If CHROME_WS is configured, it is returned directly.
+// Otherwise, it discovers it via /json/version and caches the result.
 func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
+	// Explicit override always wins.
 	if c.ws != "" {
 		return c.ws, nil
 	}
 
-	c.mu.Lock()
-	if c.cachedWS != "" && time.Since(c.cachedAt) < c.cacheTTL {
-		defer c.mu.Unlock()
-		return c.cachedWS, nil
+	// Fast-path cache (locked).
+	if ws := c.getCachedWS(); ws != "" {
+		return ws, nil
 	}
-	c.mu.Unlock()
 
+	// Discover via /json/version.
 	endpoint := fmt.Sprintf("%s/json/version", c.endpoint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -223,6 +312,7 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected chrome status: %s", resp.Status)
 	}
@@ -235,19 +325,43 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 		return "", errors.New("missing websocket debugger url")
 	}
 
-	c.mu.Lock()
-	c.cachedWS = payload.WebSocketDebuggerURL
-	c.cachedAt = time.Now()
-	c.mu.Unlock()
+	// Store in cache.
+	c.setCachedWS(payload.WebSocketDebuggerURL)
 
 	return payload.WebSocketDebuggerURL, nil
 }
 
+// getCachedWS returns the cached websocket URL if still valid.
+func (c *chromeResolver) getCachedWS() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.cachedWS == "" {
+		return ""
+	}
+	if time.Since(c.cachedAt) >= c.cacheTTL {
+		return ""
+	}
+	return c.cachedWS
+}
+
+// setCachedWS updates cache atomically.
+func (c *chromeResolver) setCachedWS(ws string) {
+	c.mu.Lock()
+	c.cachedWS = ws
+	c.cachedAt = time.Now()
+	c.mu.Unlock()
+}
+
+// loggingMiddleware logs method/path/status/duration.
+// It wraps the ResponseWriter to capture the status code.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
+
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.status, time.Since(start))
 	})
 }
