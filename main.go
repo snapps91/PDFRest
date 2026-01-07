@@ -53,6 +53,13 @@ type jsonLogWriter struct {
 	buf bytes.Buffer
 }
 
+// Write writes the given byte slice p to the jsonLogWriter.
+// It locks the writer to ensure thread safety, then attempts to
+// write the data to an internal buffer. It processes the buffer
+// line by line, encoding each line as a JSON object with a timestamp,
+// log level, and message. If a line is successfully processed, it
+// is written to the output. The function returns the number of bytes
+// written and any error encountered during the process.
 func (w *jsonLogWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
