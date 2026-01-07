@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,55 @@ const (
 	// Response header.
 	pdfFilename = "document.pdf"
 )
+
+type jsonLogWriter struct {
+	out io.Writer
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (w *jsonLogWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if _, err := w.buf.Write(p); err != nil {
+		return len(p), err
+	}
+
+	for {
+		data := w.buf.Bytes()
+		idx := bytes.IndexByte(data, '\n')
+		if idx == -1 {
+			break
+		}
+
+		line := string(data[:idx])
+		w.buf.Next(idx + 1)
+		if line == "" {
+			continue
+		}
+
+		payload := map[string]string{
+			"time":  time.Now().Format(time.RFC3339Nano),
+			"level": "info",
+			"msg":   line,
+		}
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return len(p), err
+		}
+		if _, err := w.out.Write(append(encoded, '\n')); err != nil {
+			return len(p), err
+		}
+	}
+
+	return len(p), nil
+}
+
+func init() {
+	log.SetFlags(0)
+	log.SetOutput(&jsonLogWriter{out: os.Stderr})
+}
 
 // config holds runtime configuration loaded from env vars.
 // Keep it as a "value type": immutable after construction.
