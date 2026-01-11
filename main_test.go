@@ -1,3 +1,6 @@
+// Copyright 2026 - Giacomo Failla <failla.giacomo@gmail.com>
+// MIT License. See LICENSE file for details.
+
 package main
 
 import (

@@ -127,7 +127,7 @@ Defaults:
 
 ## Container image (Alpine + supervisord)
 
-The provided `Dockerfile` builds a statically linked binary and runs both Chromium and the API with supervisord.
+The provided `Containerfile` builds a statically linked binary and runs both Chromium and the API with supervisord.
 
 ```bash
 docker build -t pdfrest .
@@ -142,13 +142,6 @@ docker run -p 8080:8080 pdfrest
 - The websocket URL is cached briefly to reduce overhead on repeated requests.
 - The server enforces body size limits and request timeouts.
 
-## File layout
-
-- `main.go`: HTTP server, request handling, and PDF rendering logic.
-- `supervisord.conf`: runs Chromium and the Go server in the container.
-- `Dockerfile`: multi-stage build and Alpine runtime setup.
-- `go.mod`: Go module definition.
-
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
