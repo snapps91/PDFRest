@@ -185,14 +185,6 @@ docker run -p 8080:8080 pdfrest
 
 > ⚠️ Even when containerized, the same **security considerations apply**: keep it internal.
 
-## Implementation notes
-
-* Uses `chromedp` to connect to a remote Chromium instance
-* HTML is injected into `about:blank` via `page.SetDocumentContent`
-* PDF generation uses `page.PrintToPDF`
-* WebSocket discovery is cached to reduce overhead
-* Request size and execution time are strictly bounded
-
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
