@@ -70,8 +70,8 @@ This service is designed for fast, reliable HTML-to-PDF rendering with minimal o
 
   * `landscape` (bool)
   * `scale` (float)
-  * `paper_width` (float, inches)
-  * `paper_height` (float, inches)
+  * `paper_width` (float, inches by default; suffix `mm` or `px` to convert)
+  * `paper_height` (float, inches by default; suffix `mm` or `px` to convert)
   * `margin_top` (float, inches)
   * `margin_bottom` (float, inches)
   * `margin_left` (float, inches)

@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func healthHandler(resolver wsResolver) http.HandlerFunc {
@@ -145,7 +146,7 @@ func parsePDFOptions(values map[string][]string) (pdfOptions, error) {
 	}
 
 	if value := getQueryValue(values, "paper_width"); value != "" {
-		parsed, err := strconv.ParseFloat(value, 64)
+		parsed, err := parseLength(value)
 		if err != nil {
 			return options, fmt.Errorf("invalid paper_width")
 		}
@@ -153,7 +154,7 @@ func parsePDFOptions(values map[string][]string) (pdfOptions, error) {
 	}
 
 	if value := getQueryValue(values, "paper_height"); value != "" {
-		parsed, err := strconv.ParseFloat(value, 64)
+		parsed, err := parseLength(value)
 		if err != nil {
 			return options, fmt.Errorf("invalid paper_height")
 		}
@@ -203,6 +204,41 @@ func parsePDFOptions(values map[string][]string) (pdfOptions, error) {
 	options.PageRanges = getQueryValue(values, "page_ranges")
 
 	return options, nil
+}
+
+func parseLength(value string) (float64, error) {
+	const (
+		mmPerInch = 25.4
+		pxPerInch = 96.0
+	)
+
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, fmt.Errorf("empty length")
+	}
+
+	lower := strings.ToLower(trimmed)
+	switch {
+	case strings.HasSuffix(lower, "mm"):
+		number := strings.TrimSpace(trimmed[:len(trimmed)-2])
+		parsed, err := strconv.ParseFloat(number, 64)
+		if err != nil {
+			return 0, err
+		}
+		return parsed / mmPerInch, nil
+	case strings.HasSuffix(lower, "px"):
+		number := strings.TrimSpace(trimmed[:len(trimmed)-2])
+		parsed, err := strconv.ParseFloat(number, 64)
+		if err != nil {
+			return 0, err
+		}
+		return parsed / pxPerInch, nil
+	case strings.HasSuffix(lower, "in"):
+		number := strings.TrimSpace(trimmed[:len(trimmed)-2])
+		return strconv.ParseFloat(strings.TrimSpace(number), 64)
+	default:
+		return strconv.ParseFloat(trimmed, 64)
+	}
 }
 
 func getQueryValue(values map[string][]string, key string) string {
