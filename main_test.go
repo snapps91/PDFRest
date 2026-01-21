@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -66,6 +67,25 @@ func TestParsePDFOptionsValid(t *testing.T) {
 	}
 }
 
+func TestParsePDFOptionsUnits(t *testing.T) {
+	values := url.Values{
+		"paper_width":  []string{"210mm"},
+		"paper_height": []string{"1024px"},
+	}
+
+	opts, err := parsePDFOptions(values)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if opts.PaperWidth == nil || !almostEqual(*opts.PaperWidth, 8.2677, 0.01) {
+		t.Fatalf("expected paper_width about 8.27in, got %#v", opts.PaperWidth)
+	}
+	if opts.PaperHeight == nil || !almostEqual(*opts.PaperHeight, 10.6667, 0.01) {
+		t.Fatalf("expected paper_height about 10.67in, got %#v", opts.PaperHeight)
+	}
+}
+
 func TestParsePDFOptionsInvalid(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -75,6 +95,8 @@ func TestParsePDFOptionsInvalid(t *testing.T) {
 		{name: "scale", values: url.Values{"scale": []string{"abc"}}},
 		{name: "paper_width", values: url.Values{"paper_width": []string{"x"}}},
 		{name: "paper_height", values: url.Values{"paper_height": []string{"x"}}},
+		{name: "paper_width_units", values: url.Values{"paper_width": []string{"1qq"}}},
+		{name: "paper_height_units", values: url.Values{"paper_height": []string{"1qq"}}},
 		{name: "margin_top", values: url.Values{"margin_top": []string{"x"}}},
 		{name: "margin_bottom", values: url.Values{"margin_bottom": []string{"x"}}},
 		{name: "margin_left", values: url.Values{"margin_left": []string{"x"}}},
@@ -89,6 +111,10 @@ func TestParsePDFOptionsInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func almostEqual(got, want, tolerance float64) bool {
+	return math.Abs(got-want) <= tolerance
 }
 
 func TestMapBodyReadErrorToStatus(t *testing.T) {
