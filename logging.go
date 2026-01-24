@@ -6,10 +6,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -48,10 +50,11 @@ func (w *jsonLogWriter) Write(p []byte) (int, error) {
 			continue
 		}
 
+		level, msg := parseLogLine(line)
 		payload := map[string]string{
 			"time":  time.Now().Format(time.RFC3339Nano),
-			"level": "info",
-			"msg":   line,
+			"level": level,
+			"msg":   msg,
 		}
 		encoded, err := json.Marshal(payload)
 		if err != nil {
@@ -70,6 +73,42 @@ func init() {
 	log.SetOutput(&jsonLogWriter{out: os.Stderr})
 }
 
+func parseLogLine(line string) (string, string) {
+	level := "info"
+	msg := line
+	if !strings.HasPrefix(line, "level=") {
+		return level, msg
+	}
+	splitAt := strings.IndexByte(line, ' ')
+	if splitAt == -1 {
+		return strings.TrimPrefix(line, "level="), ""
+	}
+	level = strings.TrimPrefix(line[:splitAt], "level=")
+	msg = strings.TrimSpace(line[splitAt+1:])
+	return level, msg
+}
+
+func logf(level, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	log.Printf("level=%s %s", level, msg)
+}
+
+func Infof(format string, args ...any) {
+	logf("info", format, args...)
+}
+
+func Warnf(format string, args ...any) {
+	logf("warning", format, args...)
+}
+
+func Errorf(format string, args ...any) {
+	logf("error", format, args...)
+}
+
+func Debugf(format string, args ...any) {
+	logf("debug", format, args...)
+}
+
 // loggingMiddleware logs method/path/status/duration.
 // It wraps the ResponseWriter to capture the status code.
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -79,7 +118,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
 
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.status, time.Since(start))
+		Infof("%s %s %d %s", r.Method, r.URL.Path, rw.status, time.Since(start))
 	})
 }
 

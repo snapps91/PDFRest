@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +52,7 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 		r.Body = http.MaxBytesReader(w, r.Body, cfg.MaxBodyBytes)
 		defer func() {
 			if err := r.Body.Close(); err != nil {
-				log.Printf("request body close error: %v", err)
+				Warnf("request body close error: %v", err)
 			}
 		}()
 
@@ -78,7 +77,7 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 		// Resolve Chrome websocket endpoint.
 		wsURL, err := resolver.wsURL(ctx)
 		if err != nil {
-			log.Printf("chrome ws error: %v", err)
+			Errorf("chrome ws error: %v", err)
 			http.Error(w, "chrome unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -86,7 +85,7 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 		// Render PDF from HTML.
 		pdf, err := renderer(ctx, wsURL, string(body), cfg.PDFWait, options)
 		if err != nil {
-			log.Printf("render error: %v", err)
+			Errorf("render error: %v", err)
 			http.Error(w, "render failed", http.StatusInternalServerError)
 			return
 		}

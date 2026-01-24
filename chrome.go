@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -70,7 +69,7 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("chrome version body close error: %v", err)
+			Warnf("chrome version body close error: %v", err)
 		}
 	}()
 
@@ -119,7 +118,7 @@ func (c *chromeResolver) checkChrome(ctx context.Context) error {
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			log.Printf("chrome health body close error: %v", err)
+			Warnf("chrome health body close error: %v", err)
 		}
 	}()
 

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -35,7 +34,7 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	}
 	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		log.Printf("invalid %s, using default: %v", key, err)
+		Warnf("invalid %s, using default: %v", key, err)
 		return fallback
 	}
 	return parsed
@@ -48,7 +47,7 @@ func getEnvInt64(key string, fallback int64) int64 {
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
-		log.Printf("invalid %s, using default: %v", key, err)
+		Warnf("invalid %s, using default: %v", key, err)
 		return fallback
 	}
 	return parsed
