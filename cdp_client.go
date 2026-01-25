@@ -458,27 +458,33 @@ func (c *cdpClient) readFrame() (bool, byte, []byte, error) {
 		return false, 0, nil, err
 	}
 
-	fin := (header[0] & 0x80) != 0
-	opcode := header[0] & 0x0F
-	masked := (header[1] & 0x80) != 0
-	payloadLen := int(header[1] & 0x7F)
+	fin := (header[0] & 0x80) != 0      // FIN bit
+	opcode := header[0] & 0x0F          // Opcode
+	masked := (header[1] & 0x80) != 0   // MASK bit
+	payloadLen := int(header[1] & 0x7F) // Payload length
 
 	if masked {
 		return false, 0, nil, errors.New("server websocket frames must not be masked")
 	}
 
 	switch payloadLen {
+	// Extended payload length: 16-bit
 	case 126:
 		ext := make([]byte, 2)
 		if _, err := io.ReadFull(c.br, ext); err != nil {
 			return false, 0, nil, err
 		}
 		payloadLen = int(ext[0])<<8 | int(ext[1])
+	// Extended payload length: 64-bit
 	case 127:
 		ext := make([]byte, 8)
 		if _, err := io.ReadFull(c.br, ext); err != nil {
 			return false, 0, nil, err
 		}
+		// Reconstructs a 64-bit unsigned length value from the first 8 bytes of ext,
+		// interpreting them as a big-endian (network-order) integer by shifting each
+		// byte into its corresponding position and OR-ing the parts together.
+		// ext must be at least 8 bytes long to avoid an out-of-bounds panic.
 		length := uint64(ext[0])<<56 | uint64(ext[1])<<48 | uint64(ext[2])<<40 | uint64(ext[3])<<32 |
 			uint64(ext[4])<<24 | uint64(ext[5])<<16 | uint64(ext[6])<<8 | uint64(ext[7])
 		if length > uint64(int(^uint(0)>>1)) {
