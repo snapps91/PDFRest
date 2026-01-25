@@ -275,11 +275,11 @@ func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, 
 		return nil, nil, err
 	}
 
-	var conn net.Conn = rawConn
+	conn := rawConn
 	if parsed.Scheme == "wss" {
 		tlsConn := tls.Client(rawConn, &tls.Config{ServerName: host})
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
-			rawConn.Close()
+			_ = rawConn.Close()
 			return nil, nil, err
 		}
 		conn = tlsConn
@@ -287,13 +287,13 @@ func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, 
 
 	key, err := generateWebSocketKey()
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wsURL, nil)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, err
 	}
 	if parsed.Port() == "" {
@@ -306,20 +306,20 @@ func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, 
 
 	if deadline, ok := ctx.Deadline(); ok {
 		if err := conn.SetDeadline(deadline); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, nil, err
 		}
 	}
 
 	if err := req.Write(conn); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, err
 	}
 
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, req)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, err
 	}
 	if resp.Body != nil {
@@ -327,25 +327,25 @@ func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, 
 	}
 
 	if resp.StatusCode != http.StatusSwitchingProtocols {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, fmt.Errorf("websocket handshake failed: %s", resp.Status)
 	}
 	if !strings.Contains(strings.ToLower(resp.Header.Get("Connection")), "upgrade") {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, errors.New("websocket handshake failed: missing connection upgrade")
 	}
 	if !strings.Contains(strings.ToLower(resp.Header.Get("Upgrade")), "websocket") {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, errors.New("websocket handshake failed: missing upgrade websocket")
 	}
 	expectedAccept := computeWebSocketAccept(key)
 	if resp.Header.Get("Sec-WebSocket-Accept") != expectedAccept {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, errors.New("websocket handshake failed: invalid accept key")
 	}
 
 	if err := conn.SetDeadline(time.Time{}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, nil, err
 	}
 
