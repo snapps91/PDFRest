@@ -17,7 +17,7 @@ It is designed to act as a **dedicated rendering component** within a larger app
 ## The service idea
 The idea behind this service is to provide fast and reliable HTML-to-PDF rendering while keeping operational complexity to a minimum. The goal was to build something focused, predictable, and easy to run in production—especially in internal environments.
 
-The initial inspiration came from using Browsershot by Spatie. Browsershot offers a very convenient way—via Node.js—to take a Blade template or any HTML content and turn it into a PDF by launching a Chrome instance behind the scenes. While this approach works well, it also introduces a full Node.js runtime and browser tooling into the stack, which isn’t always ideal for lightweight or tightly controlled backend environments.
+The initial inspiration came from using [Browsershot by Spatie](https://github.com/spatie/browsershot). Browsershot offers a very convenient way—via Node.js—to take a Blade template or any HTML content and turn it into a PDF by launching a Chrome instance behind the scenes. While this approach works well, it also introduces a full Node.js runtime and browser tooling into the stack, which isn't always ideal for lightweight or tightly controlled backend environments.
 
 This service follows the same core principle—delegating rendering to Headless Chromium—but implements it as a standalone internal service. It exposes a single, clearly defined endpoint whose only responsibility is converting HTML into a PDF. Rendering is handled through Headless Chromium using the official DevTools protocol, ensuring accurate and consistent output.
 
