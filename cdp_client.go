@@ -354,13 +354,20 @@ func (c *cdpClient) readMessage() ([]byte, error) {
 				return nil, errors.New("websocket continuation without start frame")
 			}
 			message = append(message, payload...)
-		case 0x1, 0x2:
+		case 0x1:
 			if collecting {
 				return nil, errors.New("websocket data frame while continuation pending")
 			}
 			collecting = true
 			message = append(message, payload...)
+		case 0x2:
+			return nil, errors.New("unexpected binary websocket frame")
 		case 0x8:
+			closePayload := payload
+			if len(closePayload) > 125 {
+				closePayload = nil
+			}
+			_ = c.writeControlFrame(0x8, closePayload)
 			return nil, io.EOF
 		case 0x9:
 			if err := c.writeControlFrame(0xA, payload); err != nil {
@@ -402,6 +409,10 @@ func (c *cdpClient) readFrame() (bool, byte, []byte, error) {
 	masked := (header[1] & 0x80) != 0
 	payloadLen := int(header[1] & 0x7F)
 
+	if masked {
+		return false, 0, nil, errors.New("server websocket frames must not be masked")
+	}
+
 	switch payloadLen {
 	case 126:
 		ext := make([]byte, 2)
@@ -422,22 +433,10 @@ func (c *cdpClient) readFrame() (bool, byte, []byte, error) {
 		payloadLen = int(length)
 	}
 
-	var maskKey [4]byte
-	if masked {
-		if _, err := io.ReadFull(c.br, maskKey[:]); err != nil {
-			return false, 0, nil, err
-		}
-	}
-
 	payload := make([]byte, payloadLen)
 	if payloadLen > 0 {
 		if _, err := io.ReadFull(c.br, payload); err != nil {
 			return false, 0, nil, err
-		}
-	}
-	if masked {
-		for i := range payload {
-			payload[i] ^= maskKey[i%4]
 		}
 	}
 
