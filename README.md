@@ -174,16 +174,14 @@ export CHROME_ENDPOINT=http://127.0.0.1:9222
 go run .
 ```
 
-## Container image (Alpine + supervisord)
-
-The provided `Containerfile` builds a statically linked binary and runs both Chromium and the API with supervisord.
+## Official Docker Hub image
+You can pull the official image from Docker Hub:
+Docker Hub link: https://hub.docker.com/r/snapps91/pdfrest
 
 ```bash
-docker build -t pdfrest .
-docker run -p 8080:8080 pdfrest
+docker pull snapps91/pdfrest:latest
+docker run --name pdfrest --rm -p 8080:8080 snapps91/pdfrest:latest
 ```
-
-> ⚠️ Even when containerized, the same **security considerations apply**: keep it internal.
 
 ## License
 
