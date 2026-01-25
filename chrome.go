@@ -11,9 +11,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"github.com/chromedp/cdproto/browser"
-	"github.com/chromedp/chromedp"
 )
 
 // chromeResolver resolves the remote Chrome DevTools websocket URL.
@@ -94,16 +91,20 @@ func (c *chromeResolver) wsURL(ctx context.Context) (string, error) {
 // checkChrome verifies connectivity to Chrome without relying on cached websocket values.
 func (c *chromeResolver) checkChrome(ctx context.Context) error {
 	if c.ws != "" {
-		allocCtx, cancel := chromedp.NewRemoteAllocator(ctx, c.ws)
-		defer cancel()
-
-		ctx, cancel = chromedp.NewContext(allocCtx)
-		defer cancel()
-
-		return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-			_, _, _, _, _, err := browser.GetVersion().Do(ctx)
+		client, err := newCDPClient(ctx, c.ws)
+		if err != nil {
 			return err
-		}))
+		}
+		defer func() {
+			if err := client.Close(); err != nil {
+				Warnf("chrome websocket close error: %v", err)
+			}
+		}()
+
+		var version struct {
+			ProtocolVersion string `json:"protocolVersion"`
+		}
+		return client.Call(ctx, "", "Browser.getVersion", nil, &version)
 	}
 
 	endpoint := fmt.Sprintf("%s/json/version", c.endpoint)
