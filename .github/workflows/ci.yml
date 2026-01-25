@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  lint-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,8 +23,17 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
-
-  test:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go build
+        run: go build -o /dev/null ./...
+  unit-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
