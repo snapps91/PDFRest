@@ -72,7 +72,16 @@ func (rw *cdpReadWriter) Write(p []byte) (int, error) {
 	return rw.w.Write(p)
 }
 
-// newCDPClient creates a new instance of cdpClient and establishes a WebSocket connection to the specified URL.
+// newCDPClient establishes a new WebSocket connection to the specified URL
+// and returns a pointer to a cdpClient instance along with any error encountered.
+//
+// Parameters:
+//   - ctx: A context.Context to control the lifetime of the connection.
+//   - wsURL: A string representing the WebSocket URL to connect to.
+//
+// Returns:
+//   - A pointer to a cdpClient if the connection is successful.
+//   - An error if the connection fails.
 func newCDPClient(ctx context.Context, wsURL string) (*cdpClient, error) {
 	conn, br, _, err := ws.Dial(ctx, wsURL)
 	if err != nil {
