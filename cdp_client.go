@@ -25,6 +25,7 @@ import (
 )
 
 const (
+	// cdpPollInterval defines the interval for polling reads when no deadline is set.
 	cdpPollInterval = 100 * time.Millisecond
 )
 
@@ -122,6 +123,7 @@ func (c *cdpClient) Call(ctx context.Context, sessionID, method string, params a
 		return err
 	}
 
+	// Read responses until we find the matching one
 	for {
 		msg, err := c.read(ctx)
 		if err != nil {
