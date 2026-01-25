@@ -238,10 +238,10 @@ func isTimeout(err error) bool {
 //     The returned reader must be used by the caller to avoid losing any bytes
 //     already read/buffered during response parsing.
 //     The function validates:
-//       * Status code 101 Switching Protocols
-//       * "Connection" header contains "upgrade" (case-insensitive)
-//       * "Upgrade" header contains "websocket" (case-insensitive)
-//       * Sec-WebSocket-Accept matches the expected value derived from the key
+//   - Status code 101 Switching Protocols
+//   - "Connection" header contains "upgrade" (case-insensitive)
+//   - "Upgrade" header contains "websocket" (case-insensitive)
+//   - Sec-WebSocket-Accept matches the expected value derived from the key
 //   - Resource cleanup:
 //     On any error, the connection is closed. The HTTP response body is closed
 //     (if present) since the protocol switches away from HTTP after a successful
