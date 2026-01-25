@@ -1,4 +1,6 @@
 # PDF REST Micro Service
+![Version](https://img.shields.io/badge/version-1.1.2-blue)
+![CI](https://img.shields.io/github/actions/workflow/status/snapps91/pdfrest/ci.yml?branch=main)
 
 A minimal, production-ready **internal microservice** that turns raw HTML into a PDF using a running headless Chromium instance via the DevTools protocol.
 
