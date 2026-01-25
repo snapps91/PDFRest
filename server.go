@@ -12,6 +12,12 @@ import (
 	"syscall"
 )
 
+// runServer starts the provided HTTP server and blocks until it receives either:
+//   - an OS interrupt/termination signal (SIGINT, SIGTERM), or
+//   - a non-graceful server error from ListenAndServe.
+//
+// It logs the listening address, then attempts a graceful shutdown using
+// srv.Shutdown with a timeout defined by defaultShutdownTimeout.
 func runServer(srv *http.Server, addr string) {
 	serverErr := make(chan error, 1)
 
