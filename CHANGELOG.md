@@ -11,3 +11,6 @@ All notable changes to this project will be documented in this file.
 - Replaced chromedp with a minimal CDP websocket client for Chrome automation.
 - Kept PDF rendering flow intact while switching to direct CDP calls.
 - Updated Chrome health checks to use the new CDP client.
+
+## 1.0.0
+- Initial release of pdfrest
