@@ -17,6 +17,8 @@ image-push:
 .PHONY: lint
 lint:
 	golangci-lint run ./...
+	go vet -v .
+	gofmt -l .
 
 .PHONY: test
 test:
