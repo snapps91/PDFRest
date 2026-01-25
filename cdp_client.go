@@ -208,6 +208,47 @@ func isTimeout(err error) bool {
 	return false
 }
 
+// dialWebSocket establishes a WebSocket connection to wsURL and performs the HTTP
+// Upgrade handshake manually, returning the upgraded net.Conn and a bufio.Reader
+// that may already contain buffered bytes from the handshake response.
+//
+// The function supports both "ws" (plain TCP) and "wss" (TLS over TCP). It does
+// not implement WebSocket framing; it only completes the initial handshake.
+//
+// Key steps and potentially non-obvious details:
+//   - URL validation and default ports:
+//     It accepts only ws/wss schemes. If no explicit port is present in the URL,
+//     it defaults to 80 for ws and 443 for wss, then dials "tcp" to host:port.
+//   - TLS wrapping for "wss":
+//     For secure WebSockets, the raw TCP connection is wrapped with tls.Client.
+//     ServerName is set to the URL hostname to enable proper SNI/certificate
+//     verification, and HandshakeContext is used to respect ctx cancellation.
+//   - Sec-WebSocket-Key generation and request construction:
+//     The client generates a random Sec-WebSocket-Key, builds an HTTP GET request
+//     with the required Upgrade headers, and writes it directly to the connection.
+//     If the URL didn’t specify a port, req.Host is set to the hostname so the
+//     Host header does not include an implicit port.
+//   - Deadline management:
+//     If ctx has a deadline, it is applied to the connection to bound the dial,
+//     TLS handshake, request write, and response read. After a successful
+//     handshake, the deadline is cleared (SetDeadline(time.Time{})) so the
+//     returned connection does not unexpectedly time out.
+//   - Response parsing and validation:
+//     http.ReadResponse consumes from a bufio.Reader layered on top of conn.
+//     The returned reader must be used by the caller to avoid losing any bytes
+//     already read/buffered during response parsing.
+//     The function validates:
+//       * Status code 101 Switching Protocols
+//       * "Connection" header contains "upgrade" (case-insensitive)
+//       * "Upgrade" header contains "websocket" (case-insensitive)
+//       * Sec-WebSocket-Accept matches the expected value derived from the key
+//   - Resource cleanup:
+//     On any error, the connection is closed. The HTTP response body is closed
+//     (if present) since the protocol switches away from HTTP after a successful
+//     upgrade.
+//
+// Returns a connected net.Conn and a bufio.Reader tied to that connection, or an
+// error if dialing, TLS, request writing, or handshake validation fails.
 func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, error) {
 	parsed, err := url.Parse(wsURL)
 	if err != nil {
