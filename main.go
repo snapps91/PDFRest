@@ -34,6 +34,10 @@ func printBanner() {
 }
 
 func main() {
+	// Print ASCII banner.
+	printBanner()
+	printVersion()
+
 	cfg := loadConfig()
 
 	// Resolver: discovers Chrome websocket URL unless explicitly provided.
@@ -54,9 +58,6 @@ func main() {
 		WriteTimeout:      cfg.RequestTimeout + 5*time.Second,
 		IdleTimeout:       defaultIdleTimeout,
 	}
-	// Print ASCII banner.
-	printBanner()
-	printVersion()
 
 	// Start server.
 	runServer(srv, cfg.Addr)
