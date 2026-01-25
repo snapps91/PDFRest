@@ -203,6 +203,14 @@ All configuration is done via environment variables:
 You need a running Chromium instance with remote debugging enabled:
 
 ```bash
+git clone https://github.com/snapps91/PDFRest.git 
+cd PDFRest
+go mod tidy
+```
+
+Start Chromium with remote debugging in another terminal:
+
+```bash
 chromium \
   --headless \
   --disable-gpu \
@@ -217,7 +225,6 @@ Then run the service:
 export CHROME_ENDPOINT=http://127.0.0.1:9222
 go run .
 ```
-
 
 ## License
 
