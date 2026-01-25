@@ -352,6 +352,9 @@ func dialWebSocket(ctx context.Context, wsURL string) (net.Conn, *bufio.Reader, 
 	return conn, br, nil
 }
 
+// generateWebSocketKey creates and returns a base64-encoded 16-byte random value suitable
+// for use as a WebSocket Sec-WebSocket-Key in the opening handshake.
+// It returns an error if reading cryptographically secure random bytes fails.
 func generateWebSocketKey() (string, error) {
 	var key [16]byte
 	if _, err := rand.Read(key[:]); err != nil {
@@ -360,6 +363,9 @@ func generateWebSocketKey() (string, error) {
 	return base64.StdEncoding.EncodeToString(key[:]), nil
 }
 
+// computeWebSocketAccept returns the value for the WebSocket "Sec-WebSocket-Accept" header
+// derived from the client-provided "Sec-WebSocket-Key".
+// It computes base64( SHA1( key + websocketMagicGUID ) ) as specified by RFC 6455.
 func computeWebSocketAccept(key string) string {
 	h := sha1.New()
 	_, _ = io.WriteString(h, key+websocketMagicGUID)
@@ -488,6 +494,10 @@ func (c *cdpClient) writeTextMessage(payload []byte) error {
 	return c.writeFrame(0x1, payload, true)
 }
 
+// writeControlFrame writes a WebSocket control frame using the given opcode and payload.
+// It enforces the WebSocket requirement that control frame payloads must be 125 bytes or less;
+// if payload exceeds 125 bytes, it returns an error.
+// The frame is written as a final (FIN) frame.
 func (c *cdpClient) writeControlFrame(opcode byte, payload []byte) error {
 	if len(payload) > 125 {
 		return errors.New("websocket control frame too large")
