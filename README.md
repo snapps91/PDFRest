@@ -160,7 +160,9 @@ It must be considered a **trusted internal component** and treated accordingly.
 ### Important notes
 
 ❌ **DO NOT expose this service directly to the Internet**
+
 ❌ **DO NOT use it as a public PDF rendering API**
+
 ❌ **DO NOT accept untrusted input without validation**
 
 ### Recommended setup
