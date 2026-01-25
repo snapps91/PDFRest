@@ -10,7 +10,7 @@ import (
 )
 
 func loadConfig() config {
-	return config{
+	cfg := config{
 		Addr:           getEnv("ADDR", ":8080"),
 		ChromeEndpoint: getEnv("CHROME_ENDPOINT", "http://127.0.0.1:9222"),
 		ChromeWS:       os.Getenv("CHROME_WS"),
@@ -18,6 +18,10 @@ func loadConfig() config {
 		MaxBodyBytes:   getEnvInt64("MAX_BODY_BYTES", 5*1024*1024),
 		PDFWait:        getEnvDuration("PDF_WAIT", 0),
 	}
+
+	Infof("configuration loaded: %+v", cfg)
+
+	return cfg
 }
 
 func getEnv(key, fallback string) string {
