@@ -5,8 +5,33 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
+
+func printVersion() {
+	data, err := os.ReadFile("VERSION")
+	if err != nil {
+		Warnf("unable to read VERSION file: %v", err)
+		return
+	}
+	version := strings.TrimSpace(string(data))
+	Infof("software version: %s", version)
+}
+
+func printBanner() {
+	banner :=
+		`
+░█▀▀░█▀█░█▀█░█▀█░█▀█░█░█░░░░░░░░░█▀█░█▀▄░█▀▀░█▀▄░█▀▀░█▀▀░▀█▀
+░▀▀█░█░█░█▀█░█▀▀░█▀▀░░█░░░░▄▄▄░░░█▀▀░█░█░█▀▀░█▀▄░█▀▀░▀▀█░░█░
+░▀▀▀░▀░▀░▀░▀░▀░░░▀░░░░▀░░░░░░░░░░▀░░░▀▀░░▀░░░▀░▀░▀▀▀░▀▀▀░░▀░
+░█▄█░▀█▀░█▀▀░█▀▄░█▀█░░░█▀▀░█▀▀░█▀▄░█░█░▀█▀░█▀▀░█▀▀          
+░█░█░░█░░█░░░█▀▄░█░█░░░▀▀█░█▀▀░█▀▄░▀▄▀░░█░░█░░░█▀▀          
+░▀░▀░▀▀▀░▀▀▀░▀░▀░▀▀▀░░░▀▀▀░▀▀▀░▀░▀░░▀░░▀▀▀░▀▀▀░▀▀▀          
+`
+	println(banner)
+}
 
 func main() {
 	cfg := loadConfig()
@@ -29,6 +54,10 @@ func main() {
 		WriteTimeout:      cfg.RequestTimeout + 5*time.Second,
 		IdleTimeout:       defaultIdleTimeout,
 	}
+	// Print ASCII banner.
+	printBanner()
+	printVersion()
 
+	// Start server.
 	runServer(srv, cfg.Addr)
 }
