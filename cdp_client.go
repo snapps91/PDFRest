@@ -396,19 +396,23 @@ func (c *cdpClient) readMessage() ([]byte, error) {
 		}
 
 		switch opcode {
+		// Continuation frame
 		case 0x0:
 			if !collecting {
 				return nil, errors.New("websocket continuation without start frame")
 			}
 			message = append(message, payload...)
+		// Text frame
 		case 0x1:
 			if collecting {
 				return nil, errors.New("websocket data frame while continuation pending")
 			}
 			collecting = true
 			message = append(message, payload...)
+		// Binary frame
 		case 0x2:
 			return nil, errors.New("unexpected binary websocket frame")
+		// Connection close
 		case 0x8:
 			closePayload := payload
 			if len(closePayload) > 125 {
@@ -416,13 +420,16 @@ func (c *cdpClient) readMessage() ([]byte, error) {
 			}
 			_ = c.writeControlFrame(0x8, closePayload)
 			return nil, io.EOF
+		// Ping frame
 		case 0x9:
 			if err := c.writeControlFrame(0xA, payload); err != nil {
 				return nil, err
 			}
 			continue
+		// Pong frame
 		case 0xA:
 			continue
+		// Unsupported opcode
 		default:
 			return nil, fmt.Errorf("unsupported websocket opcode: 0x%x", opcode)
 		}
@@ -491,6 +498,7 @@ func (c *cdpClient) readFrame() (bool, byte, []byte, error) {
 }
 
 func (c *cdpClient) writeTextMessage(payload []byte) error {
+	// Text frame opcode is 0x1
 	return c.writeFrame(0x1, payload, true)
 }
 
@@ -535,14 +543,19 @@ func (c *cdpClient) writeFrame(opcode byte, payload []byte, fin bool) error {
 
 	offset := 2
 	switch {
+	// Payload length fits in 7 bits
 	case payloadLen <= 125:
 		frame[1] = 0x80 | byte(payloadLen)
+	// Payload length fits in 16 bits
 	case payloadLen <= 65535:
 		frame[1] = 0x80 | 126
 		frame[offset] = byte(payloadLen >> 8)
 		frame[offset+1] = byte(payloadLen)
 		offset += 2
+	// Payload length requires 64 bits
 	default:
+		// Set payload length to 127 and encode actual length in next 8 bytes
+		// Note: we assume payloadLen fits in int on this platform
 		frame[1] = 0x80 | 127
 		length := uint64(payloadLen)
 		frame[offset] = byte(length >> 56)
@@ -560,6 +573,7 @@ func (c *cdpClient) writeFrame(opcode byte, payload []byte, fin bool) error {
 	offset += 4
 
 	for i := 0; i < payloadLen; i++ {
+		// Apply mask to payload
 		frame[offset+i] = payload[i] ^ maskKey[i%4]
 	}
 
