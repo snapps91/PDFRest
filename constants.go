@@ -57,7 +57,7 @@ type wsResolver interface {
 	wsURL(ctx context.Context) (string, error)
 }
 
-type pdfRenderer func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error)
+type pdfRenderer func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error)
 
 type versionResponse struct {
 	WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`

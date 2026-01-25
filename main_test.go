@@ -149,8 +149,8 @@ func (s stubResolver) wsURL(_ context.Context) (string, error) {
 
 func TestPDFHandlerMethodNotAllowed(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
-	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
-		return nil, nil
+	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return nil, 0, nil
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pdf", nil)
@@ -164,8 +164,8 @@ func TestPDFHandlerMethodNotAllowed(t *testing.T) {
 
 func TestPDFHandlerEmptyBody(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
-	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
-		return nil, nil
+	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return nil, 0, nil
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pdf", strings.NewReader(""))
@@ -179,8 +179,8 @@ func TestPDFHandlerEmptyBody(t *testing.T) {
 
 func TestPDFHandlerInvalidOptions(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
-	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
-		return nil, nil
+	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return nil, 0, nil
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pdf?scale=oops", strings.NewReader("<html></html>"))
@@ -194,8 +194,8 @@ func TestPDFHandlerInvalidOptions(t *testing.T) {
 
 func TestPDFHandlerResolverError(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
-	handler := pdfHandler(cfg, stubResolver{err: errors.New("no chrome")}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
-		return nil, nil
+	handler := pdfHandler(cfg, stubResolver{err: errors.New("no chrome")}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return nil, 0, nil
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pdf", strings.NewReader("<html></html>"))
@@ -209,8 +209,8 @@ func TestPDFHandlerResolverError(t *testing.T) {
 
 func TestPDFHandlerRenderError(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
-	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
-		return nil, errors.New("render failed")
+	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return nil, 0, errors.New("render failed")
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pdf", strings.NewReader("<html></html>"))
@@ -226,7 +226,7 @@ func TestPDFHandlerSuccess(t *testing.T) {
 	cfg := config{RequestTimeout: 2 * time.Second, MaxBodyBytes: 1024}
 	expected := []byte("%PDF-1.7")
 
-	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
+	handler := pdfHandler(cfg, stubResolver{ws: "ws://example"}, func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
 		if wsURL != "ws://example" {
 			t.Fatalf("unexpected wsURL: %s", wsURL)
 		}
@@ -236,7 +236,7 @@ func TestPDFHandlerSuccess(t *testing.T) {
 		if options.Landscape == nil || *options.Landscape != true {
 			t.Fatalf("expected landscape option to be true")
 		}
-		return expected, nil
+		return expected, 0, nil
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pdf?landscape=true", strings.NewReader("<html></html>"))

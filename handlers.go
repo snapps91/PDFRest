@@ -83,7 +83,11 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 		}
 
 		// Render PDF from HTML.
-		pdf, err := renderer(ctx, wsURL, string(body), cfg.PDFWait, options)
+		pdf, pdfTime, err := renderer(ctx, wsURL, string(body), cfg.PDFWait, options)
+		if rw, ok := w.(*responseWriter); ok {
+			rw.pdfTime = pdfTime
+			rw.pdfTimeSet = true
+		}
 		if err != nil {
 			Errorf("render error: %v", err)
 			http.Error(w, "render failed", http.StatusInternalServerError)

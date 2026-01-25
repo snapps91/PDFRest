@@ -12,10 +12,10 @@ import (
 
 // renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
 // Logic is unchanged: navigate to about:blank -> set document content -> wait for body -> optional sleep -> PrintToPDF.
-func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, error) {
+func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
 	client, err := newCDPClient(ctx, wsURL)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() {
 		if err := client.Close(); err != nil {
@@ -28,7 +28,7 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, opti
 	if !isPageWebSocket(wsURL) {
 		sessionID, targetID, err = openTargetSession(ctx, client)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer func() {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -42,7 +42,7 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, opti
 	if err := client.Call(ctx, sessionID, "Page.navigate", map[string]any{
 		"url": "about:blank",
 	}, nil); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var frameTree struct {
@@ -53,24 +53,24 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, opti
 		} `json:"frameTree"`
 	}
 	if err := client.Call(ctx, sessionID, "Page.getFrameTree", nil, &frameTree); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if frameTree.FrameTree.Frame.ID == "" {
-		return nil, errors.New("missing frame id")
+		return nil, 0, errors.New("missing frame id")
 	}
 
 	if err := client.Call(ctx, sessionID, "Page.setDocumentContent", map[string]any{
 		"frameId": frameTree.FrameTree.Frame.ID,
 		"html":    html,
 	}, nil); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if err := waitForBody(ctx, client, sessionID); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if err := sleepWithContext(ctx, wait); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	params := printToPDFParams{
@@ -110,18 +110,20 @@ func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, opti
 	var result struct {
 		Data string `json:"data"`
 	}
+	startPDF := time.Now()
 	if err := client.Call(ctx, sessionID, "Page.printToPDF", params, &result); err != nil {
-		return nil, err
+		return nil, time.Since(startPDF), err
 	}
+	pdfTime := time.Since(startPDF)
 	if result.Data == "" {
-		return nil, errors.New("missing pdf data")
+		return nil, pdfTime, errors.New("missing pdf data")
 	}
 	pdf, err := base64.StdEncoding.DecodeString(result.Data)
 	if err != nil {
-		return nil, err
+		return nil, pdfTime, err
 	}
 
-	return pdf, nil
+	return pdf, pdfTime, nil
 }
 
 type printToPDFParams struct {

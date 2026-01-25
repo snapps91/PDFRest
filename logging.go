@@ -5,6 +5,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -118,13 +120,33 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
 
+		if r.URL.Path == pathPDF && r.Method == http.MethodPost {
+			requestID := newRequestID()
+			pdfTime := "-"
+			if rw.pdfTimeSet {
+				pdfTime = rw.pdfTime.String()
+			}
+			Infof("%s %s %d %s request_id=%s PDF_TIME=%s", r.Method, r.URL.Path, rw.status, time.Since(start), requestID, pdfTime)
+			return
+		}
+
 		Infof("%s %s %d %s", r.Method, r.URL.Path, rw.status, time.Since(start))
 	})
 }
 
+func newRequestID() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("req-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf[:])
+}
+
 type responseWriter struct {
 	http.ResponseWriter
-	status int
+	status     int
+	pdfTime    time.Duration
+	pdfTimeSet bool
 }
 
 func (rw *responseWriter) WriteHeader(status int) {
