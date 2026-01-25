@@ -72,6 +72,7 @@ func (w *jsonLogWriter) Write(p []byte) (int, error) {
 
 func init() {
 	log.SetFlags(0)
+	// Set the log output to our custom JSON log writer
 	log.SetOutput(&jsonLogWriter{out: os.Stderr})
 }
 
@@ -134,6 +135,10 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// newRequestID generates a unique request identifier.
+// It prefers a cryptographically secure random 16-byte value encoded as hex.
+// If random data cannot be read, it falls back to a time-based identifier
+// formatted as "req-<unix-nanoseconds>".
 func newRequestID() string {
 	var buf [16]byte
 	if _, err := rand.Read(buf[:]); err != nil {
@@ -142,6 +147,13 @@ func newRequestID() string {
 	return hex.EncodeToString(buf[:])
 }
 
+// responseWriter wraps an http.ResponseWriter to capture additional response
+// metadata for logging/metrics.
+//
+// It records the final HTTP status code written for the response, and optionally
+// tracks the time spent in PDF processing. The pdfTimeSet flag indicates whether
+// pdfTime has been explicitly recorded, allowing callers to distinguish a real
+// measured duration from the zero value.
 type responseWriter struct {
 	http.ResponseWriter
 	status     int
@@ -149,6 +161,11 @@ type responseWriter struct {
 	pdfTimeSet bool
 }
 
+// WriteHeader records the HTTP status code and forwards it to the underlying
+// ResponseWriter.
+//
+// This allows middleware to capture the final status code written for the
+// response.
 func (rw *responseWriter) WriteHeader(status int) {
 	rw.status = status
 	rw.ResponseWriter.WriteHeader(status)
