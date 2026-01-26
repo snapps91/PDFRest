@@ -42,10 +42,12 @@ func main() {
 
 	// Resolver: discovers Chrome websocket URL unless explicitly provided.
 	resolver := newChromeResolver(cfg)
+	pool := newSessionPool(cfg.CDPPoolSize)
+	rendererPdf := newPDFRenderer(pool)
 
 	// Router.
 	mux := http.NewServeMux()
-	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver, renderPDF))
+	mux.HandleFunc(pathPDF, pdfHandler(cfg, resolver, rendererPdf))
 	mux.HandleFunc(pathHealthz, healthHandler(resolver))
 
 	// Server with sane defaults. Note: WriteTimeout is set to (request timeout + small buffer),

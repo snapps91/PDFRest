@@ -10,34 +10,27 @@ import (
 	"time"
 )
 
+// newPDFRenderer returns a renderer that reuses CDP sessions from the pool.
+func newPDFRenderer(pool *sessionPool) pdfRenderer {
+	if pool == nil {
+		pool = newSessionPool(0)
+	}
+	return func(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+		return renderPDF(ctx, pool, wsURL, html, wait, options)
+	}
+}
+
 // renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
 // Logic is unchanged: navigate to about:blank -> set document content -> wait for body -> optional sleep -> PrintToPDF.
-func renderPDF(ctx context.Context, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
-	client, err := newCDPClient(ctx, wsURL)
+func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+	session, err := pool.acquire(ctx, wsURL)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() {
-		if err := client.Close(); err != nil {
-			Warnf("chrome websocket close error: %v", err)
-		}
-	}()
+	defer pool.release(session)
 
-	sessionID := ""
-	targetID := ""
-	if !isPageWebSocket(wsURL) {
-		sessionID, targetID, err = openTargetSession(ctx, client)
-		if err != nil {
-			return nil, 0, err
-		}
-		defer func() {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			if err := closeTarget(cleanupCtx, client, targetID); err != nil {
-				Warnf("chrome close target error: %v", err)
-			}
-		}()
-	}
+	client := session.client
+	sessionID := session.sessionID
 
 	if err := client.Call(ctx, sessionID, "Page.navigate", map[string]any{
 		"url": "about:blank",

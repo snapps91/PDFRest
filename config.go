@@ -17,6 +17,7 @@ func loadConfig() config {
 		RequestTimeout: getEnvDuration("REQUEST_TIMEOUT", 30*time.Second),
 		MaxBodyBytes:   getEnvInt64("MAX_BODY_BYTES", 5*1024*1024),
 		PDFWait:        getEnvDuration("PDF_WAIT", 0),
+		CDPPoolSize:    getEnvInt("CDP_POOL_SIZE", 4),
 	}
 
 	Infof("configuration loaded: %+v", cfg)
@@ -50,6 +51,19 @@ func getEnvInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		Warnf("invalid %s, using default: %v", key, err)
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		Warnf("invalid %s, using default: %v", key, err)
 		return fallback

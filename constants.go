@@ -38,6 +38,7 @@ type config struct {
 	RequestTimeout time.Duration
 	MaxBodyBytes   int64
 	PDFWait        time.Duration
+	CDPPoolSize    int
 }
 
 type pdfOptions struct {
