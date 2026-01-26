@@ -9,11 +9,6 @@ build:
 image-build:
 	podman build -f Containerfile -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .
 
-.PHONY: push
-image-push:
-	podman push $(IMAGE_NAME):$(VERSION)
-	podman push $(IMAGE_NAME):latest
-
 .PHONY: lint
 lint:
 	golangci-lint run ./...
