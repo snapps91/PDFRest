@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -68,6 +69,7 @@ func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait 
 
 	params := printToPDFParams{
 		PrintBackground: boolPtr(true),
+		TransferMode:    "ReturnAsStream",
 	}
 	if options.PrintBackground != nil {
 		params.PrintBackground = options.PrintBackground
@@ -101,13 +103,23 @@ func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait 
 	}
 
 	var result struct {
-		Data string `json:"data"`
+		Data   string `json:"data"`
+		Stream string `json:"stream"`
 	}
 	startPDF := time.Now()
 	if err := client.Call(ctx, sessionID, "Page.printToPDF", params, &result); err != nil {
 		return nil, time.Since(startPDF), err
 	}
 	pdfTime := time.Since(startPDF)
+
+	if result.Stream != "" {
+		pdf, err := readPDFStream(ctx, client, sessionID, result.Stream)
+		if err != nil {
+			return nil, pdfTime, err
+		}
+		return pdf, pdfTime, nil
+	}
+
 	if result.Data == "" {
 		return nil, pdfTime, errors.New("missing pdf data")
 	}
@@ -130,6 +142,7 @@ type printToPDFParams struct {
 	MarginRight     *float64 `json:"marginRight,omitempty"`
 	PrintBackground *bool    `json:"printBackground,omitempty"`
 	PageRanges      string   `json:"pageRanges,omitempty"`
+	TransferMode    string   `json:"transferMode,omitempty"`
 }
 
 func boolPtr(value bool) *bool {
@@ -148,4 +161,69 @@ func sleepWithContext(ctx context.Context, wait time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// readPDFStream reads all data from a Chrome DevTools Protocol (CDP) IO stream handle
+// (typically returned by print-to-PDF or similar operations) and returns the accumulated
+// bytes.
+//
+// The stream is read incrementally using the "IO.read" CDP method until EOF is reached.
+// Each chunk may be base64-encoded; when Base64Encoded is true, the data is decoded
+// before being appended to the result buffer.
+//
+// On successful completion, the function attempts to close the remote stream via "IO.close".
+// Errors from closing are logged as warnings and do not affect the returned data.
+//
+// Parameters:
+//   - ctx: context used for CDP calls.
+//   - client: CDP client used to issue "IO.read" and "IO.close" commands.
+//   - sessionID: target session identifier for routing CDP commands.
+//   - stream: CDP stream handle to read from (must be non-empty).
+//
+// Returns the full stream contents as a byte slice, or an error if reading/decoding fails
+// or if the stream handle is missing.
+func readPDFStream(ctx context.Context, client *cdpClient, sessionID, stream string) ([]byte, error) {
+	if stream == "" {
+		return nil, errors.New("missing pdf stream handle")
+	}
+
+	var buf bytes.Buffer
+	for {
+		var chunk struct {
+			Data          string `json:"data"`
+			Base64Encoded bool   `json:"base64Encoded"`
+			EOF           bool   `json:"eof"`
+		}
+		if err := client.Call(ctx, sessionID, "IO.read", map[string]any{
+			"handle": stream,
+		}, &chunk); err != nil {
+			return nil, err
+		}
+		if chunk.Data != "" {
+			if chunk.Base64Encoded {
+				decoded, err := base64.StdEncoding.DecodeString(chunk.Data)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := buf.Write(decoded); err != nil {
+					return nil, err
+				}
+			} else {
+				if _, err := buf.WriteString(chunk.Data); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if chunk.EOF {
+			break
+		}
+	}
+
+	if err := client.Call(ctx, sessionID, "IO.close", map[string]any{
+		"handle": stream,
+	}, nil); err != nil {
+		Warnf("chrome stream close error: %v", err)
+	}
+
+	return buf.Bytes(), nil
 }
