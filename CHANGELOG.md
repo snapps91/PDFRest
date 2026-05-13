@@ -3,8 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 ## 1.1.4
-- Implemented a session pooling system for WebSocket connections to Chrome DevTools Protocol (CDP).
-- Improved performance 2x by reusing CDP sessions for multiple PDF rendering requests.
+- Implemented a session pooling system for Chrome DevTools Protocol (CDP) WebSocket connections.
+- Added streamed PDF reading through the CDP `ReturnAsStream` transfer mode.
+- Added the `CDP_POOL_SIZE` configuration option to control reusable CDP sessions.
+- Improved rendering throughput by reusing CDP sessions across PDF requests.
 
 ## 1.1.3
 - Removed external WebSocket dependencies by implementing a native RFC6455 client.
