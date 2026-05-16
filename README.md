@@ -125,7 +125,7 @@ Then run the service:
 
 ```bash
 export CHROME_ENDPOINT=http://127.0.0.1:9222
-go run .
+go run ./src
 ```
 
 ## License

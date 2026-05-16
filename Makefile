@@ -3,7 +3,7 @@ VERSION := $(shell cat VERSION)
 
 .PHONY: build
 build:
-	go build -o bin/pdfrest .
+	go build -o bin/pdfrest ./src
 
 .PHONY: image-build
 image-build:
@@ -12,9 +12,9 @@ image-build:
 .PHONY: lint
 lint:
 	golangci-lint run ./...
-	go vet -v .
-	gofmt -l .
+	go vet -v ./src
+	gofmt -l ./src
 
 .PHONY: test
 test:
-	go test -v ./...
+	go test -v ./src
