@@ -5,9 +5,10 @@ VERSION := $(shell cat VERSION)
 build:
 	go build -o bin/pdfrest ./src
 
+# Apple Silicon users
 .PHONY: image-build
 image-build:
-	podman build -f Containerfile -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .
+	container build -f Containerfile -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest . --platform linux/amd64,linux/arm64
 
 .PHONY: lint
 lint:

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.2.0
+- Reorganized project structure: moved all Go source files into a `src/` subdirectory.
+- Kept all existing functionality intact; no behavioral changes.
+
 ## 1.1.4
 - Implemented a session pooling system for Chrome DevTools Protocol (CDP) WebSocket connections.
 - Added streamed PDF reading through the CDP `ReturnAsStream` transfer mode.
