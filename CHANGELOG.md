@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.3.0
+- Moved Chromium lifecycle management into the Go service.
+- Added on-demand browser startup, request leases, idle shutdown, and automatic restart.
+- Made health checks side-effect free so probes do not start or keep Chromium alive.
+- Added configuration for the Chrome binary, profile, and lifecycle timeouts.
+- Removed supervisord; `pdfrest` now owns Chromium directly and `tini` only handles init duties.
+- Added concurrent lifecycle and race-safety tests.
+
 ## 1.2.0
 - Reorganized project structure: moved all Go source files into a `src/` subdirectory.
 - Kept all existing functionality intact; no behavioral changes.

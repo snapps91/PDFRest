@@ -12,13 +12,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.23.2
 
 RUN addgroup -S app && adduser -S app -G app \
-    && apk add --no-cache chromium supervisor ca-certificates ttf-freefont
+    && apk add --no-cache chromium tini ca-certificates ttf-freefont
 
 COPY --from=build /out/pdfrest /usr/local/bin/pdfrest
-COPY supervisord.conf /etc/supervisord.conf
+COPY VERSION /VERSION
 
 EXPOSE 8080
 
 USER app
 
-ENTRYPOINT ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+ENV CHROME_BIN=/usr/bin/chromium
+
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/pdfrest"]

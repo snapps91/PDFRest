@@ -185,3 +185,14 @@ func (p *sessionPool) resetLocked() {
 	p.sessions = nil
 	p.wsURL = ""
 }
+
+// close releases every idle CDP session. Callers must ensure that no checked-out
+// session is still in use when this is part of a browser shutdown.
+func (p *sessionPool) close() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.resetLocked()
+	p.mu.Unlock()
+}

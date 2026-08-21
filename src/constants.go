@@ -27,18 +27,29 @@ const (
 	// Cache TTL for Chrome websocket discovery.
 	defaultWSTTL = 1 * time.Minute
 
+	// Managed Chromium lifecycle defaults.
+	defaultChromeIdleTimeout     = 5 * time.Minute
+	defaultChromeStartupTimeout  = 10 * time.Second
+	defaultChromeShutdownTimeout = 5 * time.Second
+
 	// Response header.
 	pdfFilename = "document.pdf"
 )
 
 type config struct {
-	Addr           string
-	ChromeEndpoint string
-	ChromeWS       string
-	RequestTimeout time.Duration
-	MaxBodyBytes   int64
-	PDFWait        time.Duration
-	CDPPoolSize    int
+	Addr                  string
+	ChromeEndpoint        string
+	ChromeWS              string
+	ChromeAutoStart       bool
+	ChromeBinary          string
+	ChromeUserDataDir     string
+	ChromeIdleTimeout     time.Duration
+	ChromeStartupTimeout  time.Duration
+	ChromeShutdownTimeout time.Duration
+	RequestTimeout        time.Duration
+	MaxBodyBytes          int64
+	PDFWait               time.Duration
+	CDPPoolSize           int
 }
 
 type pdfOptions struct {

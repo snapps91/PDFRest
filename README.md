@@ -1,8 +1,8 @@
 # PDF REST Micro Service
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![CI](https://img.shields.io/github/actions/workflow/status/snapps91/pdfrest/ci.yml?branch=main)
 
-A minimal, production-ready **internal microservice** that turns raw HTML into a PDF using a running headless Chromium instance via the DevTools protocol.
+A minimal, production-ready **internal microservice** that turns raw HTML into a PDF using headless Chromium via the DevTools protocol.
 
 The service exposes a single REST endpoint at `/api/v1/pdf`, accepts HTML in the request body, and returns a PDF stream as the response.
 
@@ -17,13 +17,15 @@ It is designed to act as a **dedicated rendering component** within a larger app
 ## Service 
 The idea behind this service is to provide fast and reliable HTML-to-PDF rendering while keeping operational complexity to a minimum. The goal was to build something focused, predictable, and easy to run in production—especially in internal environments.
 
-One of the key design choices that makes the service both fast and highly scalable is how Chromium is managed. Instead of spawning a new Chromium process for every incoming request, a single Chromium instance is started when the service boots and kept running for its entire lifetime. This completely removes the overhead of repeated browser startups, which is often one of the most expensive parts of HTML-to-PDF rendering.
+One of the key design choices that makes the service both fast and resource-efficient is how Chromium is managed. Chromium is started lazily by the Go service when the first PDF request arrives, reused across requests, and stopped after a configurable period with no rendering activity. A later request starts it again automatically. Active and concurrent renderings hold a lease on the browser, so the idle timeout can never stop it while work is in progress.
 
 To support this model, the service includes a custom-built DevTools protocol client, implemented directly over WebSockets and inspired by the chromedp protocol—without relying on heavy external dependencies. This lightweight, in-process client allows the service to communicate efficiently with Chromium while keeping memory usage low and performance predictable.
 
 The API itself is implemented as a lightweight Go server, chosen for its fast startup times and small memory footprint. From an operational perspective, the service is designed to be safe and production-friendly for internal use: it enforces request timeouts and size limits, supports graceful shutdowns, and allows the rendering layer to be scaled horizontally and independently.
 
-Finally, the service is container-ready by design. It ships with an Alpine-based container that runs both Chromium and the API—managed via supervisord—making deployment simple and consistent across environments, while still delivering excellent performance and low resource consumption.
+The health endpoint does not wake a stopped browser, so liveness and readiness probes do not defeat the memory-saving behavior. When Chromium is running, the same endpoint still verifies the live CDP connection.
+
+Finally, the service is container-ready by design. It ships with an Alpine-based image where the Go service directly owns the Chromium child process; a minimal init forwards signals and reaps processes, but no separate process supervisor manages or keeps Chromium alive. Graceful service shutdown also terminates Chromium and its renderer processes.
 
 ## Official Docker Hub image
 You can pull the official image from Docker Hub:
@@ -32,7 +34,9 @@ Docker Hub link: https://hub.docker.com/r/snapps91/pdfrest
 
 ```bash
 docker pull snapps91/pdfrest:latest
-docker run --name pdfrest --rm -p 8080:8080 snapps91/pdfrest:latest
+docker run --name pdfrest --rm -p 8080:8080 \
+  -e CHROME_IDLE_TIMEOUT=5m \
+  snapps91/pdfrest:latest
 ```
 
 
@@ -77,7 +81,10 @@ Basic health check.
 Verifies that:
 
 * the HTTP service is running
-* the connection to Chromium is operational
+* the managed Chromium executable and endpoint configuration are available, when currently stopped
+* the CDP connection is operational, when Chromium is running
+
+The check never starts Chromium and does not reset its idle timeout.
 
 Response: `200 OK` with body `ok`.
 
@@ -89,44 +96,35 @@ curl -sS http://localhost:8080/healthz
 
 All configuration is done via environment variables:
 
-| Variable          | Default                 | Description                              |
-| ----------------- | ----------------------- | ---------------------------------------- |
-| `ADDR`            | `:8080`                 | Address the HTTP server binds to         |
-| `CHROME_ENDPOINT` | `http://127.0.0.1:9222` | Chromium debugging endpoint              |
-| `CHROME_WS`       | empty                   | Optional explicit DevTools websocket URL |
-| `REQUEST_TIMEOUT` | `30s`                   | Per-request timeout for rendering        |
-| `MAX_BODY_BYTES`  | `5242880`               | Max request body size in bytes (5 MiB)   |
-| `PDF_WAIT`        | `0s`                    | Optional delay before printing           |
+| Variable                  | Default                 | Description                                                                 |
+| ------------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `ADDR`                    | `:8080`                 | Address the HTTP server binds to                                            |
+| `CHROME_AUTO_START`       | `true`                  | Start and stop a local Chromium process on demand                           |
+| `CHROME_BIN`              | auto-detected           | Chromium/Chrome executable name or absolute path                            |
+| `CHROME_ENDPOINT`         | `http://127.0.0.1:9222` | Local debugging endpoint, or the remote endpoint when automatic start is off |
+| `CHROME_WS`               | empty                   | Explicit DevTools websocket URL; automatically disables managed startup     |
+| `CHROME_USER_DATA_DIR`    | temporary per process   | Optional persistent Chromium profile directory                              |
+| `CHROME_IDLE_TIMEOUT`     | `5m`                    | Stop Chromium after this much rendering inactivity; `0` keeps it running    |
+| `CHROME_STARTUP_TIMEOUT`  | `10s`                   | Maximum time to wait for a newly started Chromium                           |
+| `CHROME_SHUTDOWN_TIMEOUT` | `5s`                    | Grace period before Chromium is force-killed                                |
+| `REQUEST_TIMEOUT`         | `30s`                   | Per-request timeout, including a possible browser startup                   |
+| `MAX_BODY_BYTES`          | `5242880`               | Max request body size in bytes (5 MiB)                                      |
+| `PDF_WAIT`                | `0s`                    | Optional delay before printing                                              |
+| `CDP_POOL_SIZE`           | `4`                     | Maximum number of reusable idle CDP sessions                                |
 
 ---
 
 ## Running locally
 
-You need a running Chromium instance with remote debugging enabled:
+Install Chromium or Google Chrome, then run the service. The executable is auto-detected from common names and locations; use `CHROME_BIN` when it is elsewhere:
 
 ```bash
 git clone https://github.com/snapps91/PDFRest.git 
 cd PDFRest
-go mod tidy
-```
-
-Start Chromium with remote debugging in another terminal:
-
-```bash
-chromium \
-  --headless \
-  --disable-gpu \
-  --no-sandbox \
-  --remote-debugging-address=127.0.0.1 \
-  --remote-debugging-port=9222
-```
-
-Then run the service:
-
-```bash
-export CHROME_ENDPOINT=http://127.0.0.1:9222
 go run ./src
 ```
+
+Chromium remains stopped until the first `POST /api/v1/pdf`. To use an externally managed or remote Chrome instead, set `CHROME_AUTO_START=false` and configure `CHROME_ENDPOINT` or `CHROME_WS`.
 
 ## License
 

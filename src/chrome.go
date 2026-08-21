@@ -160,3 +160,11 @@ func (c *chromeResolver) setCachedWS(ws string) {
 	c.cachedAt = time.Now()
 	c.mu.Unlock()
 }
+
+// invalidate discards discovery data belonging to a previous Chromium process.
+func (c *chromeResolver) invalidate() {
+	c.mu.Lock()
+	c.cachedWS = ""
+	c.cachedAt = time.Time{}
+	c.mu.Unlock()
+}

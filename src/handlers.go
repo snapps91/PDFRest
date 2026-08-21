@@ -74,13 +74,15 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 			return
 		}
 
-		// Resolve Chrome websocket endpoint.
-		wsURL, err := resolver.wsURL(ctx)
+		// Resolve Chrome and, when it is managed by this service, keep a lease for
+		// the whole render so the idle reaper cannot stop it mid-request.
+		wsURL, releaseChrome, err := acquireChrome(ctx, resolver)
 		if err != nil {
 			Errorf("chrome ws error: %v", err)
 			http.Error(w, "chrome unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		defer releaseChrome()
 
 		// Render PDF from HTML.
 		pdf, pdfTime, err := renderer(ctx, wsURL, string(body), cfg.PDFWait, options)
@@ -106,6 +108,18 @@ func pdfHandler(cfg config, resolver wsResolver, renderer pdfRenderer) http.Hand
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(pdf)
 	}
+}
+
+type chromeLeaseResolver interface {
+	acquire(ctx context.Context) (wsURL string, release func(), err error)
+}
+
+func acquireChrome(ctx context.Context, resolver wsResolver) (string, func(), error) {
+	if managed, ok := resolver.(chromeLeaseResolver); ok {
+		return managed.acquire(ctx)
+	}
+	wsURL, err := resolver.wsURL(ctx)
+	return wsURL, func() {}, err
 }
 
 // readRequestBody reads the body fully. The MaxBytesReader is already applied at the handler level.
