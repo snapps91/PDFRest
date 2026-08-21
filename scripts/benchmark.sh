@@ -3,8 +3,8 @@ set -euo pipefail
 
 HOST="${HOST:-http://127.0.0.1:8080}"
 ENDPOINT="${ENDPOINT:-/api/v1/pdf}"
-TOTAL_REQUESTS="${TOTAL_REQUESTS:-100000}"
-CONCURRENCY="${CONCURRENCY:-100}"
+TOTAL_REQUESTS="${TOTAL_REQUESTS:-1000}"
+CONCURRENCY="${CONCURRENCY:-10}"
 OUT_DIR="${OUT_DIR:-/tmp/pdfrest-bench}"
 
 HTML_PAYLOAD='<!doctype html><html><head><meta charset="utf-8"><title>Bench</title></head><body><h1>Benchmark</h1><p>PDF render test</p></body></html>'
