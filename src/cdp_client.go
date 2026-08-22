@@ -534,6 +534,9 @@ func (c *cdpClient) writeFrame(opcode byte, payload []byte, fin bool) error {
 	}
 
 	payloadLen := len(payload)
+	if payloadLen > 1<<30 {
+		return errors.New("websocket frame payload too large")
+	}
 	headerLen := 2
 	if payloadLen >= 126 && payloadLen <= 65535 {
 		headerLen += 2
