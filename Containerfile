@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine3.23 AS build
+FROM golang:1.25-alpine3.24 AS build
 
 WORKDIR /src
 COPY go.mod ./
@@ -9,7 +9,7 @@ COPY . ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/pdfrest ./src
 
-FROM alpine:3.23.2
+FROM alpine:3.24.1
 
 RUN addgroup -S app && adduser -S app -G app \
     && apk add --no-cache chromium tini ca-certificates ttf-freefont
