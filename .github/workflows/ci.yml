@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            image_tag="$(<VERSION)"
+            image_tag="$GITHUB_REF_NAME"
             image="docker.io/snapps91/pdfrest:$image_tag"
             platforms="linux/amd64,linux/arm64"
           elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
