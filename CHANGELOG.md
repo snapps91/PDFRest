@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.4.0 (In Progress)
+- Exposed the complete current Chrome `Page.printToPDF` feature set: HTML headers and footers, CSS page-size preference, tagged accessible PDFs, and document outlines.
+- Added standard paper formats (`Letter`, `Legal`, `Tabloid`, `Ledger`, and `A0` through `A6`).
+- Added transparent PDF backgrounds and optional webfont readiness waits.
+- Added `cm`, `mm`, `px`, and `in` units to every paper and margin length.
+- Added early validation for Chrome scale limits, dimensions, margins, booleans, and page ranges.
+- Preserved all existing defaults and query parameters for backward compatibility.
+
 ## 1.3.0
 - Moved Chromium lifecycle management into the Go service.
 - Added on-demand browser startup, request leases, idle shutdown, and automatic restart.
