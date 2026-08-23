@@ -80,13 +80,15 @@ curl \
   "$BASE_URL/api/v1/pdf?paper_width=210mm&paper_height=297mm&print_background=true" \
   --output "$TMP_DIR/document.pdf"
 
-if ! grep -Eiq '^content-type: application/pdf\r?$' "$TMP_DIR/headers.txt"; then
+if ! grep -Eiq '^content-type:[[:space:]]*application/pdf[[:space:]]*$' "$TMP_DIR/headers.txt"; then
   echo "PDF response has an unexpected Content-Type" >&2
+  sed -n '1,20p' "$TMP_DIR/headers.txt" >&2
   exit 1
 fi
 
-if ! grep -Eiq '^content-disposition: inline; filename="document.pdf"\r?$' "$TMP_DIR/headers.txt"; then
+if ! grep -Eiq '^content-disposition:[[:space:]]*inline;[[:space:]]*filename="document\.pdf"[[:space:]]*$' "$TMP_DIR/headers.txt"; then
   echo "PDF response has an unexpected Content-Disposition" >&2
+  sed -n '1,20p' "$TMP_DIR/headers.txt" >&2
   exit 1
 fi
 
