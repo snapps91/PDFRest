@@ -44,13 +44,29 @@ jobs:
       - name: go test
         run: go test ./...
 
-  container:
-    name: Build and push container
-    if: github.event_name == 'push'
+  integration-test:
+    name: Container end-to-end test
     needs:
       - lint-test
       - build-test
       - unit-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and test the complete application
+        run: bash scripts/integration_test.sh
+
+  container:
+    name: Build and push container
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
+    needs:
+      - lint-test
+      - build-test
+      - unit-test
+      - integration-test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,11 +81,14 @@ jobs:
             image_tag="$(<VERSION)"
             image="docker.io/snapps91/pdfrest:$image_tag"
             platforms="linux/amd64,linux/arm64"
-          else
+          elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
             image_tag="rolling"
             repository="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
             image="ghcr.io/$repository:$image_tag"
             platforms="linux/amd64"
+          else
+            echo "Container publishing is only allowed from main or a tag" >&2
+            exit 1
           fi
 
           if [[ ! "$image_tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
