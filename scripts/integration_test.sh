@@ -77,7 +77,7 @@ curl \
   --dump-header "$TMP_DIR/headers.txt" \
   --header 'Content-Type: text/html; charset=utf-8' \
   --data-binary "$HTML_PAYLOAD" \
-  "$BASE_URL/api/v1/pdf?paper_width=210mm&paper_height=297mm&print_background=true" \
+  "$BASE_URL/api/v1/pdf?paper_format=A4&margin_top=1cm&print_background=true&display_header_footer=true&header_template=%3Cspan%20class%3Dtitle%3E%3C%2Fspan%3E&footer_template=%3Cspan%20class%3DpageNumber%3E%3C%2Fspan%3E%2F%3Cspan%20class%3DtotalPages%3E%3C%2Fspan%3E&prefer_css_page_size=false&generate_tagged_pdf=true&generate_document_outline=true&omit_background=true&wait_for_fonts=true" \
   --output "$TMP_DIR/document.pdf"
 
 if ! grep -Eiq '^content-type:[[:space:]]*application/pdf[[:space:]]*$' "$TMP_DIR/headers.txt"; then
@@ -100,6 +100,16 @@ fi
 pdf_size="$(wc -c <"$TMP_DIR/document.pdf")"
 if [ "$pdf_size" -lt 1000 ]; then
   echo "Generated PDF is unexpectedly small: $pdf_size bytes" >&2
+  exit 1
+fi
+
+if ! LC_ALL=C grep -a -q '/StructTreeRoot' "$TMP_DIR/document.pdf"; then
+  echo "Generated PDF is missing the tagged accessibility structure" >&2
+  exit 1
+fi
+
+if ! LC_ALL=C grep -a -q '/Outlines' "$TMP_DIR/document.pdf"; then
+  echo "Generated PDF is missing the document outline" >&2
   exit 1
 fi
 

@@ -78,15 +78,24 @@ All parameters are optional.
 | Parameter | Value | Description |
 | --- | --- | --- |
 | `landscape` | boolean | Use landscape orientation |
-| `scale` | number | Set the page rendering scale |
-| `paper_width` | length | Paper width; inches by default, or use `in`, `mm`, or `px` |
-| `paper_height` | length | Paper height; inches by default, or use `in`, `mm`, or `px` |
-| `margin_top` | number | Top margin in inches |
-| `margin_bottom` | number | Bottom margin in inches |
-| `margin_left` | number | Left margin in inches |
-| `margin_right` | number | Right margin in inches |
+| `display_header_footer` | boolean | Display the print header and footer; defaults to `false` |
+| `header_template` | HTML | Header template; supports `date`, `title`, `url`, `pageNumber`, and `totalPages` class placeholders |
+| `footer_template` | HTML | Footer template with the same placeholders as `header_template` |
+| `scale` | number | Set the page rendering scale from `0.1` to `2` |
+| `paper_format` | string | `Letter`, `Legal`, `Tabloid`, `Ledger`, or `A0`–`A6`; overrides custom dimensions |
+| `paper_width` | length | Paper width; inches by default, or use `in`, `cm`, `mm`, or `px` |
+| `paper_height` | length | Paper height; inches by default, or use `in`, `cm`, `mm`, or `px` |
+| `margin_top` | length | Top margin; inches by default, or use `in`, `cm`, `mm`, or `px` |
+| `margin_bottom` | length | Bottom margin; inches by default, or use `in`, `cm`, `mm`, or `px` |
+| `margin_left` | length | Left margin; inches by default, or use `in`, `cm`, `mm`, or `px` |
+| `margin_right` | length | Right margin; inches by default, or use `in`, `cm`, `mm`, or `px` |
 | `print_background` | boolean | Print CSS backgrounds; defaults to `true` |
 | `page_ranges` | string | Pages to print, for example `1-3,5` |
+| `prefer_css_page_size` | boolean | Prefer the page size declared by CSS `@page` instead of scaling to the configured paper |
+| `generate_tagged_pdf` | boolean | Generate a tagged, accessible PDF from the document accessibility tree |
+| `generate_document_outline` | boolean | Generate PDF bookmarks from semantic document headings |
+| `omit_background` | boolean | Make the default page background transparent |
+| `wait_for_fonts` | boolean | Wait for `document.fonts.ready` before printing |
 
 Example with custom page settings:
 
@@ -97,6 +106,20 @@ curl --fail --silent --show-error \
   'http://localhost:8080/api/v1/pdf?paper_width=210mm&paper_height=297mm&margin_top=0.5&margin_bottom=0.5' \
   --output invoice.pdf
 ```
+
+Generate an accessible A4 PDF with bookmarks and wait until webfonts are ready:
+
+```bash
+curl --fail --silent --show-error \
+  -H 'Content-Type: text/html; charset=utf-8' \
+  --data-binary @report.html \
+  'http://localhost:8080/api/v1/pdf?paper_format=A4&generate_tagged_pdf=true&generate_document_outline=true&wait_for_fonts=true' \
+  --output report.pdf
+```
+
+Header and footer templates are query-string values and therefore must be URL-encoded. Chrome injects values into elements carrying one of the supported classes. For example, a page counter can use `<span class="pageNumber"></span>/<span class="totalPages"></span>` inside `footer_template`; set `display_header_footer=true` to show it.
+
+`generate_tagged_pdf` and `generate_document_outline` are experimental Chrome DevTools Protocol options. They are available in current Chrome/Chromium, including the browser shipped in the current container image. When using a remotely managed browser, use a recent Chrome version before enabling them. Omitting every new parameter preserves the existing rendering behavior.
 
 ### `GET /healthz`
 

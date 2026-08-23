@@ -53,16 +53,24 @@ type config struct {
 }
 
 type pdfOptions struct {
-	Landscape       *bool
-	Scale           *float64
-	PaperWidth      *float64
-	PaperHeight     *float64
-	MarginTop       *float64
-	MarginBottom    *float64
-	MarginLeft      *float64
-	MarginRight     *float64
-	PrintBackground *bool
-	PageRanges      string
+	Landscape               *bool
+	DisplayHeaderFooter     *bool
+	PrintBackground         *bool
+	Scale                   *float64
+	PaperWidth              *float64
+	PaperHeight             *float64
+	MarginTop               *float64
+	MarginBottom            *float64
+	MarginLeft              *float64
+	MarginRight             *float64
+	PageRanges              string
+	HeaderTemplate          string
+	FooterTemplate          string
+	PreferCSSPageSize       *bool
+	GenerateTaggedPDF       *bool
+	GenerateDocumentOutline *bool
+	OmitBackground          *bool
+	WaitForFonts            *bool
 }
 
 type wsResolver interface {
