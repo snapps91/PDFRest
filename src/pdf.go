@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -21,14 +22,34 @@ func newPDFRenderer(pool *sessionPool) pdfRenderer {
 	}
 }
 
-// renderPDF uses a remote Chrome instance via DevTools websocket and prints the given HTML to PDF.
-// Logic is unchanged: navigate to about:blank -> set document content -> wait for body -> optional sleep -> PrintToPDF.
-func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait time.Duration, options pdfOptions) ([]byte, time.Duration, error) {
+// renderPDF uses a Chrome DevTools websocket to load the supplied HTML, apply
+// request-scoped PDF preparation, and stream the printed document back.
+func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait time.Duration, options pdfOptions) (pdf []byte, pdfTime time.Duration, err error) {
 	session, err := pool.acquire(ctx, wsURL)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer pool.release(session)
+	reusable := false
+	backgroundOverridden := false
+	defer func() {
+		if backgroundOverridden {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), defaultChromeClientTimeout)
+			cleanupErr := clearBackgroundOverride(cleanupCtx, session.client, session.sessionID)
+			cancel()
+			if cleanupErr != nil {
+				reusable = false
+				if err == nil {
+					pdf = nil
+					err = fmt.Errorf("restore page background: %w", cleanupErr)
+				}
+			}
+		}
+		if reusable {
+			pool.release(session)
+		} else {
+			_ = session.Close()
+		}
+	}()
 
 	client := session.client
 	sessionID := session.sessionID
@@ -63,44 +84,22 @@ func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait 
 	if err := waitForBody(ctx, client, sessionID); err != nil {
 		return nil, 0, err
 	}
+	if options.WaitForFonts != nil && *options.WaitForFonts {
+		if err := waitForFonts(ctx, client, sessionID); err != nil {
+			return nil, 0, err
+		}
+	}
 	if err := sleepWithContext(ctx, wait); err != nil {
 		return nil, 0, err
 	}
+	if options.OmitBackground != nil && *options.OmitBackground {
+		if err := setTransparentBackground(ctx, client, sessionID); err != nil {
+			return nil, 0, err
+		}
+		backgroundOverridden = true
+	}
 
-	params := printToPDFParams{
-		PrintBackground: boolPtr(true),
-		TransferMode:    "ReturnAsStream",
-	}
-	if options.PrintBackground != nil {
-		params.PrintBackground = options.PrintBackground
-	}
-	if options.Landscape != nil {
-		params.Landscape = options.Landscape
-	}
-	if options.Scale != nil {
-		params.Scale = options.Scale
-	}
-	if options.PaperWidth != nil {
-		params.PaperWidth = options.PaperWidth
-	}
-	if options.PaperHeight != nil {
-		params.PaperHeight = options.PaperHeight
-	}
-	if options.MarginTop != nil {
-		params.MarginTop = options.MarginTop
-	}
-	if options.MarginBottom != nil {
-		params.MarginBottom = options.MarginBottom
-	}
-	if options.MarginLeft != nil {
-		params.MarginLeft = options.MarginLeft
-	}
-	if options.MarginRight != nil {
-		params.MarginRight = options.MarginRight
-	}
-	if options.PageRanges != "" {
-		params.PageRanges = options.PageRanges
-	}
+	params := buildPrintToPDFParams(options)
 
 	var result struct {
 		Data   string `json:"data"`
@@ -110,39 +109,105 @@ func renderPDF(ctx context.Context, pool *sessionPool, wsURL, html string, wait 
 	if err := client.Call(ctx, sessionID, "Page.printToPDF", params, &result); err != nil {
 		return nil, time.Since(startPDF), err
 	}
-	pdfTime := time.Since(startPDF)
+	pdfTime = time.Since(startPDF)
 
 	if result.Stream != "" {
-		pdf, err := readPDFStream(ctx, client, sessionID, result.Stream)
+		pdf, err = readPDFStream(ctx, client, sessionID, result.Stream)
 		if err != nil {
 			return nil, pdfTime, err
 		}
+		reusable = true
 		return pdf, pdfTime, nil
 	}
 
 	if result.Data == "" {
 		return nil, pdfTime, errors.New("missing pdf data")
 	}
-	pdf, err := base64.StdEncoding.DecodeString(result.Data)
+	pdf, err = base64.StdEncoding.DecodeString(result.Data)
 	if err != nil {
 		return nil, pdfTime, err
 	}
 
+	reusable = true
 	return pdf, pdfTime, nil
 }
 
 type printToPDFParams struct {
-	Landscape       *bool    `json:"landscape,omitempty"`
-	Scale           *float64 `json:"scale,omitempty"`
-	PaperWidth      *float64 `json:"paperWidth,omitempty"`
-	PaperHeight     *float64 `json:"paperHeight,omitempty"`
-	MarginTop       *float64 `json:"marginTop,omitempty"`
-	MarginBottom    *float64 `json:"marginBottom,omitempty"`
-	MarginLeft      *float64 `json:"marginLeft,omitempty"`
-	MarginRight     *float64 `json:"marginRight,omitempty"`
-	PrintBackground *bool    `json:"printBackground,omitempty"`
-	PageRanges      string   `json:"pageRanges,omitempty"`
-	TransferMode    string   `json:"transferMode,omitempty"`
+	Landscape               *bool    `json:"landscape,omitempty"`
+	DisplayHeaderFooter     *bool    `json:"displayHeaderFooter,omitempty"`
+	PrintBackground         *bool    `json:"printBackground,omitempty"`
+	Scale                   *float64 `json:"scale,omitempty"`
+	PaperWidth              *float64 `json:"paperWidth,omitempty"`
+	PaperHeight             *float64 `json:"paperHeight,omitempty"`
+	MarginTop               *float64 `json:"marginTop,omitempty"`
+	MarginBottom            *float64 `json:"marginBottom,omitempty"`
+	MarginLeft              *float64 `json:"marginLeft,omitempty"`
+	MarginRight             *float64 `json:"marginRight,omitempty"`
+	PageRanges              string   `json:"pageRanges,omitempty"`
+	HeaderTemplate          string   `json:"headerTemplate,omitempty"`
+	FooterTemplate          string   `json:"footerTemplate,omitempty"`
+	PreferCSSPageSize       *bool    `json:"preferCSSPageSize,omitempty"`
+	TransferMode            string   `json:"transferMode,omitempty"`
+	GenerateTaggedPDF       *bool    `json:"generateTaggedPDF,omitempty"`
+	GenerateDocumentOutline *bool    `json:"generateDocumentOutline,omitempty"`
+}
+
+func buildPrintToPDFParams(options pdfOptions) printToPDFParams {
+	printBackground := options.PrintBackground
+	if printBackground == nil {
+		printBackground = boolPtr(true)
+	}
+	return printToPDFParams{
+		Landscape:               options.Landscape,
+		DisplayHeaderFooter:     options.DisplayHeaderFooter,
+		PrintBackground:         printBackground,
+		Scale:                   options.Scale,
+		PaperWidth:              options.PaperWidth,
+		PaperHeight:             options.PaperHeight,
+		MarginTop:               options.MarginTop,
+		MarginBottom:            options.MarginBottom,
+		MarginLeft:              options.MarginLeft,
+		MarginRight:             options.MarginRight,
+		PageRanges:              options.PageRanges,
+		HeaderTemplate:          options.HeaderTemplate,
+		FooterTemplate:          options.FooterTemplate,
+		PreferCSSPageSize:       options.PreferCSSPageSize,
+		TransferMode:            "ReturnAsStream",
+		GenerateTaggedPDF:       options.GenerateTaggedPDF,
+		GenerateDocumentOutline: options.GenerateDocumentOutline,
+	}
+}
+
+func waitForFonts(ctx context.Context, client *cdpClient, sessionID string) error {
+	var result struct {
+		ExceptionDetails any `json:"exceptionDetails"`
+	}
+	if err := client.Call(ctx, sessionID, "Runtime.evaluate", map[string]any{
+		"expression":    "document.fonts ? document.fonts.ready : Promise.resolve()",
+		"awaitPromise":  true,
+		"returnByValue": true,
+	}, &result); err != nil {
+		return err
+	}
+	if result.ExceptionDetails != nil {
+		return errors.New("waiting for document fonts failed")
+	}
+	return nil
+}
+
+func setTransparentBackground(ctx context.Context, client *cdpClient, sessionID string) error {
+	return client.Call(ctx, sessionID, "Emulation.setDefaultBackgroundColorOverride", map[string]any{
+		"color": map[string]any{
+			"r": 0,
+			"g": 0,
+			"b": 0,
+			"a": 0,
+		},
+	}, nil)
+}
+
+func clearBackgroundOverride(ctx context.Context, client *cdpClient, sessionID string) error {
+	return client.Call(ctx, sessionID, "Emulation.setDefaultBackgroundColorOverride", map[string]any{}, nil)
 }
 
 func boolPtr(value bool) *bool {
